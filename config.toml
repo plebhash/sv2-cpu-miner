@@ -1,0 +1,26 @@
+# address of the mining server
+server_addr = "127.0.0.1:3333"
+
+# public key of the mining server
+auth_pk = "9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72"
+
+# how many Sv2 channels to open
+n_extended_channels = 2
+n_standard_channels = 2
+
+# user_identity string for Sv2 channel opening messages
+user_identity = "username"
+
+# device_id string for Sv2 connection
+device_id = "sv2-cpu-miner"
+
+# flag to stop hashing on the job after submitting the first share
+single_submit = false
+
+# CPU usage percentage (1-100)
+# 100 = full CPU speed, 90 = 90% CPU usage, 50 = 50% CPU usage
+cpu_usage_percent = 100
+
+# value to multiply the advertised nominal hashrate during channel opening
+# valid values: nominal_hashrate_multiplier >= 0.0
+nominal_hashrate_multiplier = 1.0
