@@ -6,7 +6,7 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
-tower-stratum = { git = "https://github.com/plebhash/tower-stratum", branch = "sri-main" }
+tower-stratum = { git = "https://github.com/plebhash/tower-stratum", branch = "main" }
 tokio = { version = "1", features = ["full", "tracing", "signal"] }
 tokio-util = "0.7.15"
 tracing = "0.1"
@@ -17,8 +17,8 @@ toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 async-channel = "1.5.1"
 bitcoin = "0.32.5"
-key-utils = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
+key-utils = { git = "https://github.com/stratum-mining/stratum", branch = "v1.4.0" }
 tracing-subscriber = "0.3.19"
 
 [dev-dependencies]
-integration_tests_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
+integration_tests_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "v1.4.0" }
