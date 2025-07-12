@@ -238,7 +238,7 @@ async fn mine_job(
                     let sequence_number = share_accounting.get_last_share_sequence_number() + 1;
 
                     let share = SubmitSharesStandard {
-                        channel_id: channel_id,
+                        channel_id,
                         sequence_number,
                         job_id: active_job.job_id,
                         nonce,

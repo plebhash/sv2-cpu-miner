@@ -188,7 +188,7 @@ async fn mine_job(
         .into_inner()
         .expect("only active jobs allowed");
 
-    // Time-based throttling: work for cpu_usage_percent ms, then sleep for (100-cpu_usage_percent)ms in CPU_THROTTLE_WINDOW_MS windows  
+    // Time-based throttling: work for cpu_usage_percent ms, then sleep for (100-cpu_usage_percent)ms in CPU_THROTTLE_WINDOW_MS windows
     let work_duration_ms = cpu_usage_percent;
     let sleep_duration_ms = CPU_THROTTLE_WINDOW_MS - cpu_usage_percent;
     let mut window_start = std::time::Instant::now();
@@ -256,7 +256,7 @@ async fn mine_job(
                     let sequence_number = share_accounting.get_last_share_sequence_number() + 1;
 
                     let share = SubmitSharesExtended {
-                        channel_id: channel_id,
+                        channel_id,
                         sequence_number,
                         job_id: active_job.job_id,
                         nonce,
