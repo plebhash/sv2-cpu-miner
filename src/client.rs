@@ -1,6 +1,6 @@
+use crate::config::CPU_THROTTLE_WINDOW_MS;
 use crate::config::Sv2CpuMinerConfig;
 use crate::handler::Sv2CpuMinerClientHandler;
-use crate::config::CPU_THROTTLE_WINDOW_MS;
 use anyhow::{Result, anyhow};
 use bitcoin::{
     CompactTarget,
@@ -106,7 +106,7 @@ pub async fn measure_hashrate(cpu_usage_percent: u64) -> f32 {
     let mut nonce = 0;
     let mut ntime = 0;
     let mut hash_count = 0u64;
-    
+
     // Time-based throttling: work for cpu_usage_percent ms, then sleep for (100-cpu_usage_percent)ms in CPU_THROTTLE_WINDOW_MS windows
     let work_duration_ms = cpu_usage_percent;
     let sleep_duration_ms = CPU_THROTTLE_WINDOW_MS - cpu_usage_percent;
