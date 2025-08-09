@@ -1,10 +1,10 @@
-use tower_stratum::client::service::request::RequestToSv2Client;
-use tower_stratum::roles_logic_sv2::channels::client::error::ExtendedChannelError;
-use tower_stratum::roles_logic_sv2::channels::client::extended::ExtendedChannel;
-use tower_stratum::roles_logic_sv2::mining_sv2::{
+use sv2_services::client::service::event::Sv2ClientEvent;
+use sv2_services::roles_logic_sv2::channels::client::error::ExtendedChannelError;
+use sv2_services::roles_logic_sv2::channels::client::extended::ExtendedChannel;
+use sv2_services::roles_logic_sv2::mining_sv2::{
     NewExtendedMiningJob, SetNewPrevHash, SubmitSharesExtended, Target,
 };
-use tower_stratum::roles_logic_sv2::{
+use sv2_services::roles_logic_sv2::{
     parsers::Mining,
     utils::{merkle_root_from_path, u256_to_block_hash},
 };
@@ -25,7 +25,7 @@ use tracing::{debug, error, info};
 
 pub struct ExtendedMiner {
     extended_channel: Arc<RwLock<ExtendedChannel<'static>>>,
-    request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+    event_injector: async_channel::Sender<Sv2ClientEvent<'static>>,
     global_cancellation_token: CancellationToken,
     miner_cancellation_token: CancellationToken,
     single_submit_cancellation_token: Option<CancellationToken>,
@@ -37,7 +37,7 @@ impl ExtendedMiner {
         extended_channel: ExtendedChannel<'static>,
         cpu_usage_percent: u64,
         single_submit: bool,
-        request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+        event_injector: async_channel::Sender<Sv2ClientEvent<'static>>,
         global_cancellation_token: CancellationToken,
     ) -> Self {
         let miner_cancellation_token = CancellationToken::new();
@@ -48,7 +48,7 @@ impl ExtendedMiner {
         };
         Self {
             extended_channel: Arc::new(RwLock::new(extended_channel)),
-            request_injector,
+            event_injector,
             global_cancellation_token,
             miner_cancellation_token,
             single_submit_cancellation_token,
@@ -83,7 +83,7 @@ impl ExtendedMiner {
             }
             self.miner_cancellation_token = CancellationToken::new();
 
-            let request_injector = self.request_injector.clone();
+            let request_injector = self.event_injector.clone();
             let global_cancellation_token = self.global_cancellation_token.clone();
             let miner_cancellation_token = self.miner_cancellation_token.clone();
             let extended_channel = self.extended_channel.clone();
@@ -119,7 +119,7 @@ impl ExtendedMiner {
         self.miner_cancellation_token = CancellationToken::new();
 
         // Extract needed values from self before spawning
-        let request_injector = self.request_injector.clone();
+        let request_injector = self.event_injector.clone();
         let global_cancellation_token = self.global_cancellation_token.clone();
         let miner_cancellation_token = self.miner_cancellation_token.clone();
         let extended_channel = self.extended_channel.clone();
@@ -149,7 +149,7 @@ impl ExtendedMiner {
 
 async fn mine_job(
     extended_channel: Arc<RwLock<ExtendedChannel<'static>>>,
-    request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+    event_injector: async_channel::Sender<Sv2ClientEvent<'static>>,
     global_cancellation_token: CancellationToken,
     miner_cancellation_token: CancellationToken,
     single_submit_cancellation_token: Option<CancellationToken>,
@@ -188,7 +188,7 @@ async fn mine_job(
         .into_inner()
         .expect("only active jobs allowed");
 
-    // Time-based throttling: work for cpu_usage_percent ms, then sleep for (100-cpu_usage_percent)ms in CPU_THROTTLE_WINDOW_MS windows  
+    // Time-based throttling: work for cpu_usage_percent ms, then sleep for (100-cpu_usage_percent)ms in CPU_THROTTLE_WINDOW_MS windows
     let work_duration_ms = cpu_usage_percent;
     let sleep_duration_ms = CPU_THROTTLE_WINDOW_MS - cpu_usage_percent;
     let mut window_start = std::time::Instant::now();
@@ -268,7 +268,7 @@ async fn mine_job(
                     let _ = extended_channel_guard.validate_share(share.clone());
                     drop(extended_channel_guard);
 
-                    match request_injector.send(RequestToSv2Client::SendMessageToMiningServer(Box::new(Mining::SubmitSharesExtended(share.clone())))).await {
+                    match event_injector.send(Sv2ClientEvent::SendMessageToMiningServer(Box::new(Mining::SubmitSharesExtended(share.clone())))).await {
                         Ok(_) => {
                             info!("Submitting share: {:?}", share);
                             if let Some(ref single_submit_cancellation_token) = single_submit_cancellation_token {

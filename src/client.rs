@@ -1,20 +1,20 @@
+use crate::config::CPU_THROTTLE_WINDOW_MS;
 use crate::config::Sv2CpuMinerConfig;
 use crate::handler::Sv2CpuMinerClientHandler;
-use crate::config::CPU_THROTTLE_WINDOW_MS;
 use anyhow::{Result, anyhow};
 use bitcoin::{
     CompactTarget,
     blockdata::block::{Header, Version},
     hashes::sha256d::Hash,
 };
+use sv2_services::client::service::Sv2ClientService;
+use sv2_services::client::service::config::Sv2ClientServiceConfig;
+use sv2_services::client::service::config::Sv2ClientServiceMiningConfig;
+use sv2_services::client::service::event::Sv2ClientEvent;
+use sv2_services::client::service::subprotocols::template_distribution::handler::NullSv2TemplateDistributionClientHandler;
+use sv2_services::roles_logic_sv2::utils::u256_to_block_hash;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
-use tower_stratum::client::service::Sv2ClientService;
-use tower_stratum::client::service::config::Sv2ClientServiceConfig;
-use tower_stratum::client::service::config::Sv2ClientServiceMiningConfig;
-use tower_stratum::client::service::request::RequestToSv2Client;
-use tower_stratum::client::service::subprotocols::template_distribution::handler::NullSv2TemplateDistributionClientHandler;
-use tower_stratum::roles_logic_sv2::utils::u256_to_block_hash;
 use tracing::{error, info};
 
 #[derive(Clone)]
@@ -48,7 +48,7 @@ impl Sv2CpuMiner {
         let template_distribution_handler = NullSv2TemplateDistributionClientHandler;
 
         let cancellation_token = CancellationToken::new();
-        let (tx, rx) = async_channel::unbounded::<RequestToSv2Client<'static>>();
+        let (tx, rx) = async_channel::unbounded::<Sv2ClientEvent<'static>>();
 
         let nominal_hashrate = measure_hashrate(config.cpu_usage_percent).await;
 
@@ -64,7 +64,7 @@ impl Sv2CpuMiner {
             cancellation_token.clone(),
         );
 
-        let sv2_client_service = Sv2ClientService::new_with_request_injector(
+        let sv2_client_service = Sv2ClientService::new_with_event_injector(
             service_config,
             mining_handler,
             template_distribution_handler,
@@ -106,7 +106,7 @@ pub async fn measure_hashrate(cpu_usage_percent: u64) -> f32 {
     let mut nonce = 0;
     let mut ntime = 0;
     let mut hash_count = 0u64;
-    
+
     // Time-based throttling: work for cpu_usage_percent ms, then sleep for (100-cpu_usage_percent)ms in CPU_THROTTLE_WINDOW_MS windows
     let work_duration_ms = cpu_usage_percent;
     let sleep_duration_ms = CPU_THROTTLE_WINDOW_MS - cpu_usage_percent;

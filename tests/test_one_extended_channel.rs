@@ -3,8 +3,8 @@ use integration_tests_sv2::{
 };
 use sv2_cpu_miner::client::Sv2CpuMiner;
 use sv2_cpu_miner::config::Sv2CpuMinerConfig;
-use tower_stratum::roles_logic_sv2::common_messages_sv2::*;
-use tower_stratum::roles_logic_sv2::mining_sv2::*;
+use sv2_services::roles_logic_sv2::common_messages_sv2::*;
+use sv2_services::roles_logic_sv2::mining_sv2::*;
 
 #[tokio::test]
 async fn test_mining_client_one_extended_channel() {

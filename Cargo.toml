@@ -6,7 +6,7 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
-tower-stratum = { git = "https://github.com/plebhash/tower-stratum", branch = "main" }
+sv2-services = { git = "https://github.com/plebhash/sv2-services", branch = "main" }
 tokio = { version = "1", features = ["full", "tracing", "signal"] }
 tokio-util = "0.7.15"
 tracing = "0.1"

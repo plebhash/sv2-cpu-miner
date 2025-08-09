@@ -1,10 +1,10 @@
-use tower_stratum::client::service::request::RequestToSv2Client;
-use tower_stratum::roles_logic_sv2::channels::client::error::StandardChannelError;
-use tower_stratum::roles_logic_sv2::channels::client::standard::StandardChannel;
-use tower_stratum::roles_logic_sv2::mining_sv2::{
+use sv2_services::client::service::event::Sv2ClientEvent;
+use sv2_services::roles_logic_sv2::channels::client::error::StandardChannelError;
+use sv2_services::roles_logic_sv2::channels::client::standard::StandardChannel;
+use sv2_services::roles_logic_sv2::mining_sv2::{
     NewMiningJob, SetNewPrevHash, SubmitSharesStandard, Target,
 };
-use tower_stratum::roles_logic_sv2::{parsers::Mining, utils::u256_to_block_hash};
+use sv2_services::roles_logic_sv2::{parsers::Mining, utils::u256_to_block_hash};
 
 use crate::config::CPU_THROTTLE_WINDOW_MS;
 
@@ -22,7 +22,7 @@ use tracing::{debug, error, info};
 
 pub struct StandardMiner {
     standard_channel: Arc<RwLock<StandardChannel<'static>>>,
-    request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+    request_injector: async_channel::Sender<Sv2ClientEvent<'static>>,
     global_cancellation_token: CancellationToken,
     miner_cancellation_token: CancellationToken,
     single_submit_cancellation_token: Option<CancellationToken>,
@@ -34,7 +34,7 @@ impl StandardMiner {
         standard_channel: StandardChannel<'static>,
         cpu_usage_percent: u64,
         single_submit: bool,
-        request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+        request_injector: async_channel::Sender<Sv2ClientEvent<'static>>,
         global_cancellation_token: CancellationToken,
     ) -> Self {
         let miner_cancellation_token = CancellationToken::new();
@@ -143,7 +143,7 @@ impl StandardMiner {
 
 async fn mine_job(
     standard_channel: Arc<RwLock<StandardChannel<'static>>>,
-    request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+    request_injector: async_channel::Sender<Sv2ClientEvent<'static>>,
     global_cancellation_token: CancellationToken,
     miner_cancellation_token: CancellationToken,
     single_submit_cancellation_token: Option<CancellationToken>,
@@ -250,7 +250,7 @@ async fn mine_job(
                     let _ = standard_channel_guard.validate_share(share.clone());
                     drop(standard_channel_guard);
 
-                    match request_injector.send(RequestToSv2Client::SendMessageToMiningServer(Box::new(Mining::SubmitSharesStandard(share.clone())))).await {
+                    match request_injector.send(Sv2ClientEvent::SendMessageToMiningServer(Box::new(Mining::SubmitSharesStandard(share.clone())))).await {
                         Ok(_) => {
                             info!("Submitting share: {:?}", share);
                             if let Some(ref single_submit_cancellation_token) = single_submit_cancellation_token {

@@ -2,7 +2,7 @@
 
 A Stratum V2 (Sv2) CPU miner implementation based on:
 - [Stratum V2 Reference Implementation](https://github.com/stratum-mining/stratum)
-- [`tower-stratum`](https://github.com/plebhash/tower-stratum)
+- [`sv2-services`](https://github.com/plebhash/sv2-services)
 - [`tokio`](https://tokio.rs)
 
 ## Features
