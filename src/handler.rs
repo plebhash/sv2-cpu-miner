@@ -118,7 +118,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
         open_standard_mining_channel_success: OpenStandardMiningChannelSuccess<'static>,
     ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
         info!(
-            "Received OpenStandardMiningChannel.Success: {:?}",
+            "Received OpenStandardMiningChannel.Success: {}",
             open_standard_mining_channel_success
         );
 
@@ -155,7 +155,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
         open_extended_mining_channel_success: OpenExtendedMiningChannelSuccess<'static>,
     ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
         info!(
-            "Received OpenExtendedMiningChannel.Success: {:?}",
+            "Received OpenExtendedMiningChannel.Success: {}",
             open_extended_mining_channel_success
         );
 
@@ -194,7 +194,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
         open_standard_mining_channel_error: OpenMiningChannelError<'static>,
     ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
         info!(
-            "Received OpenMiningChannel.Error: {:?}",
+            "Received OpenMiningChannel.Error: {}",
             open_standard_mining_channel_error
         );
         Ok(Sv2ClientOutcome::Ok)
@@ -204,7 +204,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
         &mut self,
         update_channel_error: UpdateChannelError<'static>,
     ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
-        info!("Received UpdateChannel.Error: {:?}", update_channel_error);
+        info!("Received UpdateChannel.Error: {}", update_channel_error);
         Ok(Sv2ClientOutcome::Ok)
     }
 
@@ -212,7 +212,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
         &mut self,
         close_channel: CloseChannel<'static>,
     ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
-        info!("Received CloseChannel: {:?}", close_channel);
+        info!("Received CloseChannel: {}", close_channel);
 
         let mut standard_channels = self.standard_channels.write().await;
         let mut extended_channels = self.extended_channels.write().await;
@@ -223,7 +223,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
         if has_standard_channel {
             standard_channels.remove(&close_channel.channel_id);
             info!(
-                "Removed Standard Channel with ID: {:?}",
+                "Removed Standard Channel with ID: {}",
                 close_channel.channel_id
             );
         }
@@ -231,14 +231,14 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
         if has_extended_channel {
             extended_channels.remove(&close_channel.channel_id);
             info!(
-                "Removed Extended Channel with ID: {:?}",
+                "Removed Extended Channel with ID: {}",
                 close_channel.channel_id
             );
         }
 
         if !has_standard_channel && !has_extended_channel {
             error!(
-                "Channel with ID: {:?} not found, ignoring CloseChannel.",
+                "Channel with ID: {} not found, ignoring CloseChannel.",
                 close_channel.channel_id
             );
         }
@@ -250,7 +250,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
         &mut self,
         set_extranonce_prefix: SetExtranoncePrefix<'static>,
     ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
-        info!("received SetExtranoncePrefix: {:?}", set_extranonce_prefix);
+        info!("received SetExtranoncePrefix: {}", set_extranonce_prefix);
 
         let standard_channels = self.standard_channels.read().await;
         let extended_channels = self.extended_channels.read().await;
@@ -273,13 +273,13 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
             {
                 Ok(()) => {
                     info!(
-                        "updated standard channel with id: {:?}, new extranonce prefix: {:?}",
+                        "updated standard channel with id: {}, new extranonce prefix: {}",
                         set_extranonce_prefix.channel_id, set_extranonce_prefix.extranonce_prefix
                     );
                 }
                 Err(e) => {
                     error!(
-                        "failed to set new extranonce prefix for standard channel with id: {:?}, error: {:?}",
+                        "failed to set new extranonce prefix for standard channel with id: {}, error: {:?}",
                         set_extranonce_prefix.channel_id, e
                     );
                 }
@@ -299,13 +299,13 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
             {
                 Ok(()) => {
                     info!(
-                        "updated extended channel with id: {:?}, new extranonce prefix: {:?}",
+                        "updated extended channel with id: {}, new extranonce prefix: {}",
                         set_extranonce_prefix.channel_id, set_extranonce_prefix.extranonce_prefix
                     );
                 }
                 Err(e) => {
                     error!(
-                        "failed to set new extranonce prefix for extended channel with id: {:?}, error: {:?}",
+                        "failed to set new extranonce prefix for extended channel with id: {}, error: {:?}",
                         set_extranonce_prefix.channel_id, e
                     );
                 }
@@ -314,7 +314,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
 
         if !has_standard_channel && !has_extended_channel {
             error!(
-                "Channel with ID: {:?} not found, ignoring SetExtranoncePrefix.",
+                "Channel with ID: {} not found, ignoring SetExtranoncePrefix.",
                 set_extranonce_prefix.channel_id
             );
         }
@@ -326,7 +326,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
         &mut self,
         submit_shares_success: SubmitSharesSuccess,
     ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
-        info!("received SubmitShares.Success: {:?}", submit_shares_success);
+        info!("received SubmitShares.Success: {}", submit_shares_success);
         Ok(Sv2ClientOutcome::Ok)
     }
 
@@ -334,7 +334,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
         &mut self,
         submit_shares_error: SubmitSharesError<'_>,
     ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
-        info!("received SubmitShares.Error: {:?}", submit_shares_error);
+        info!("received SubmitShares.Error: {}", submit_shares_error);
         Ok(Sv2ClientOutcome::Ok)
     }
 
@@ -342,7 +342,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
         &mut self,
         new_mining_job: NewMiningJob<'_>,
     ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
-        info!("Received NewMiningJob: {:?}", new_mining_job);
+        info!("Received NewMiningJob: {}", new_mining_job);
 
         let standard_channels = self.standard_channels.read().await;
 
@@ -350,7 +350,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
 
         if !has_standard_channel {
             error!(
-                "Standard Channel ID: {:?} not found. Ignoring NewMiningJob.",
+                "Standard Channel ID: {} not found. Ignoring NewMiningJob.",
                 new_mining_job.channel_id
             );
         } else {
@@ -363,7 +363,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
                 .on_new_mining_job(new_mining_job.clone().into_static())
                 .await;
             info!(
-                "NewMiningJob processed: Standard Channel ID: {:?}, Job ID: {:?}",
+                "NewMiningJob processed: Standard Channel ID: {}, Job ID: {}",
                 new_mining_job.channel_id, new_mining_job.job_id
             );
         }
@@ -375,10 +375,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
         &mut self,
         new_extended_mining_job: NewExtendedMiningJob<'_>,
     ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
-        info!(
-            "Received NewExtendedMiningJob: {:?}",
-            new_extended_mining_job
-        );
+        info!("Received NewExtendedMiningJob: {}", new_extended_mining_job);
 
         let extended_channels = self.extended_channels.read().await;
 
@@ -387,7 +384,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
 
         if !has_extended_channel {
             error!(
-                "Extended Channel ID: {:?} not found. Ignoring NewExtendedMiningJob.",
+                "Extended Channel ID: {} not found. Ignoring NewExtendedMiningJob.",
                 new_extended_mining_job.channel_id
             );
         } else {
@@ -411,7 +408,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
         &mut self,
         set_new_prev_hash: SetNewPrevHash<'_>,
     ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
-        info!("Received SetNewPrevHash: {:?}", set_new_prev_hash);
+        info!("Received SetNewPrevHash: {}", set_new_prev_hash);
 
         let standard_channels = self.standard_channels.read().await;
         let extended_channels = self.extended_channels.read().await;
@@ -421,7 +418,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
 
         if !has_standard_channel && !has_extended_channel {
             error!(
-                "Channel with ID: {:?} not found, ignoring SetNewPrevHash.",
+                "Channel with ID: {} not found, ignoring SetNewPrevHash.",
                 set_new_prev_hash.channel_id
             );
         }
@@ -439,13 +436,13 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
             {
                 Ok(()) => {
                     info!(
-                        "SetNewPrevHash processed: Standard Channel ID: {:?}, Job ID: {:?}",
+                        "SetNewPrevHash processed: Standard Channel ID: {}, Job ID: {}",
                         set_new_prev_hash.channel_id, set_new_prev_hash.job_id
                     );
                 }
                 Err(e) => {
                     error!(
-                        "Failed to process SetNewPrevHash for Standard Channel with ID: {:?}, error: {:?}",
+                        "Failed to process SetNewPrevHash for Standard Channel with ID: {}, error: {:?}",
                         set_new_prev_hash.channel_id, e
                     );
                 }
@@ -465,13 +462,13 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
             {
                 Ok(()) => {
                     info!(
-                        "SetNewPrevHash processed: Extended Channel ID: {:?}, Job ID: {:?}",
+                        "SetNewPrevHash processed: Extended Channel ID: {}, Job ID: {}",
                         set_new_prev_hash.channel_id, set_new_prev_hash.job_id
                     );
                 }
                 Err(e) => {
                     error!(
-                        "Failed to process SetNewPrevHash for Extended Channel with ID: {:?}, error: {:?}",
+                        "Failed to process SetNewPrevHash for Extended Channel with ID: {}, error: {:?}",
                         set_new_prev_hash.channel_id, e
                     );
                 }
@@ -501,7 +498,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
         &mut self,
         set_target: SetTarget<'_>,
     ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
-        info!("Received SetTarget: {:?}", set_target);
+        info!("Received SetTarget: {}", set_target);
 
         let standard_channels = self.standard_channels.read().await;
         let extended_channels = self.extended_channels.read().await;
@@ -511,7 +508,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
 
         if !has_standard_channel && !has_extended_channel {
             error!(
-                "Channel with ID: {:?} not found, ignoring SetTarget.",
+                "Channel with ID: {} not found, ignoring SetTarget.",
                 set_target.channel_id
             );
         }
@@ -527,7 +524,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
                 .set_target(set_target.maximum_target.clone().into())
                 .await;
             info!(
-                "SetTarget processed: Standard Channel ID: {:?}",
+                "SetTarget processed: Standard Channel ID: {}",
                 set_target.channel_id
             );
         }
@@ -543,7 +540,7 @@ impl Sv2MiningClientHandler for Sv2CpuMinerClientHandler {
                 .set_target(set_target.maximum_target.into())
                 .await;
             info!(
-                "SetTarget processed: Extended Channel ID: {:?}",
+                "SetTarget processed: Extended Channel ID: {}",
                 set_target.channel_id
             );
         }

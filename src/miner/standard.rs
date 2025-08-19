@@ -252,7 +252,7 @@ async fn mine_job(
 
                     match request_injector.send(Sv2ClientEvent::SendMessageToMiningServer(Box::new(Mining::SubmitSharesStandard(share.clone())))).await {
                         Ok(_) => {
-                            info!("Submitting share: {:?}", share);
+                            info!("Submitting share: {}", share);
                             if let Some(ref single_submit_cancellation_token) = single_submit_cancellation_token {
                                 info!("Single submit enabled, cancelling miner task");
                                 single_submit_cancellation_token.cancel();
