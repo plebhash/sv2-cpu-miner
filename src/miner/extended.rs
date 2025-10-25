@@ -179,6 +179,7 @@ async fn mine_job(
             .expect("channel must have chain tip")
             .prev_hash(),
     );
+    let extranonce_size = extended_channel_guard.get_rollable_extranonce_size() as usize;
 
     drop(extended_channel_guard);
 
@@ -195,7 +196,7 @@ async fn mine_job(
 
     // avoid rolling extranonce to save CPU hashpower
     // merkle root calculation would introduce overhead
-    let extranonce = vec![0; 32 - extranonce_prefix.len()];
+    let extranonce = vec![0; extranonce_size];
     let full_extranonce = [extranonce_prefix.clone(), extranonce.clone()].concat();
     let merkle_root: [u8; 32] = merkle_root_from_path(
         active_job.coinbase_tx_prefix.inner_as_ref(),
