@@ -5,8 +5,8 @@ use sv2_services::client::service::event::Sv2ClientEventError;
 use sv2_services::client::service::outcome::Sv2ClientOutcome;
 use sv2_services::client::service::subprotocols::mining::handler::Sv2MiningClientHandler;
 use sv2_services::client::service::subprotocols::mining::trigger::MiningClientTrigger;
-use sv2_services::roles_logic_sv2::channels::client::extended::ExtendedChannel;
-use sv2_services::roles_logic_sv2::channels::client::standard::StandardChannel;
+use sv2_services::roles_logic_sv2::channels_sv2::client::extended::ExtendedChannel;
+use sv2_services::roles_logic_sv2::channels_sv2::client::standard::StandardChannel;
 use sv2_services::roles_logic_sv2::mining_sv2::{
     CloseChannel, NewExtendedMiningJob, NewMiningJob, OpenExtendedMiningChannelSuccess,
     OpenMiningChannelError, OpenStandardMiningChannelSuccess, SetCustomMiningJobError,

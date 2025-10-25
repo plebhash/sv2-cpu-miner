@@ -1,5 +1,6 @@
 use integration_tests_sv2::{
     interceptor::MessageDirection, start_pool, start_sniffer, start_template_provider,
+    template_provider::DifficultyLevel,
 };
 use sv2_cpu_miner::client::Sv2CpuMiner;
 use sv2_cpu_miner::config::Sv2CpuMinerConfig;
@@ -10,9 +11,9 @@ use sv2_services::roles_logic_sv2::mining_sv2::*;
 async fn test_mining_client_one_standard_channel() {
     let _ = tracing_subscriber::fmt().try_init();
 
-    let (_tp, tp_addr) = start_template_provider(None);
+    let (_tp, tp_addr) = start_template_provider(None, DifficultyLevel::Mid);
     let (_pool, pool_addr) = start_pool(Some(tp_addr)).await;
-    let (sniffer, sniffer_addr) = start_sniffer("", pool_addr, false, vec![]);
+    let (sniffer, sniffer_addr) = start_sniffer("", pool_addr, false, vec![], None);
 
     // Give sniffer time to initialize
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;

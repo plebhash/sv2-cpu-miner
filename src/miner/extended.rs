@@ -1,11 +1,11 @@
 use sv2_services::client::service::event::Sv2ClientEvent;
-use sv2_services::roles_logic_sv2::channels::client::error::ExtendedChannelError;
-use sv2_services::roles_logic_sv2::channels::client::extended::ExtendedChannel;
+use sv2_services::roles_logic_sv2::channels_sv2::client::error::ExtendedChannelError;
+use sv2_services::roles_logic_sv2::channels_sv2::client::extended::ExtendedChannel;
 use sv2_services::roles_logic_sv2::mining_sv2::{
     NewExtendedMiningJob, SetNewPrevHash, SubmitSharesExtended, Target,
 };
 use sv2_services::roles_logic_sv2::{
-    parsers::Mining,
+    parsers_sv2::Mining,
     utils::{merkle_root_from_path, u256_to_block_hash},
 };
 

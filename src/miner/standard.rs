@@ -1,10 +1,10 @@
 use sv2_services::client::service::event::Sv2ClientEvent;
-use sv2_services::roles_logic_sv2::channels::client::error::StandardChannelError;
-use sv2_services::roles_logic_sv2::channels::client::standard::StandardChannel;
+use sv2_services::roles_logic_sv2::channels_sv2::client::error::StandardChannelError;
+use sv2_services::roles_logic_sv2::channels_sv2::client::standard::StandardChannel;
 use sv2_services::roles_logic_sv2::mining_sv2::{
     NewMiningJob, SetNewPrevHash, SubmitSharesStandard, Target,
 };
-use sv2_services::roles_logic_sv2::{parsers::Mining, utils::u256_to_block_hash};
+use sv2_services::roles_logic_sv2::{parsers_sv2::Mining, utils::u256_to_block_hash};
 
 use crate::config::CPU_THROTTLE_WINDOW_MS;
 
