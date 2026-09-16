@@ -1,14 +1,14 @@
-use key_utils::Secp256k1PublicKey;
 use serde::Deserialize;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::Path;
+use stratum_apps::key_utils::Secp256k1PublicKey;
 
 /// Duration of each CPU throttling cycle in milliseconds
 /// The miner will work for N% of this window, then sleep for (100-N)% of this window
 pub const CPU_THROTTLE_WINDOW_MS: u64 = 100;
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct Sv2CpuMinerConfig {
     pub server_addr: SocketAddr,
     pub auth_pk: Option<Secp256k1PublicKey>,

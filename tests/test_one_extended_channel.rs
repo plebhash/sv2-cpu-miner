@@ -1,18 +1,18 @@
 use integration_tests_sv2::{
     interceptor::MessageDirection, start_pool, start_sniffer, start_template_provider,
-    template_provider::DifficultyLevel,
+    sv2_tp_config, template_provider::DifficultyLevel,
 };
+use stratum_apps::stratum_core::common_messages_sv2::*;
+use stratum_apps::stratum_core::mining_sv2::*;
 use sv2_cpu_miner::client::Sv2CpuMiner;
 use sv2_cpu_miner::config::Sv2CpuMinerConfig;
-use sv2_services::roles_logic_sv2::common_messages_sv2::*;
-use sv2_services::roles_logic_sv2::mining_sv2::*;
 
 #[tokio::test]
 async fn test_mining_client_one_extended_channel() {
     let _ = tracing_subscriber::fmt().try_init();
 
-    let (_tp, tp_addr) = start_template_provider(None, DifficultyLevel::Mid);
-    let (_pool, pool_addr) = start_pool(Some(tp_addr)).await;
+    let (_tp, tp_addr) = start_template_provider(None, DifficultyLevel::Low);
+    let (_pool, pool_addr, _) = start_pool(sv2_tp_config(tp_addr), vec![], vec![], false).await;
     let (sniffer, sniffer_addr) = start_sniffer("", pool_addr, false, vec![], None);
 
     // Give sniffer time to initialize

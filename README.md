@@ -1,8 +1,8 @@
 # Sv2 CPU Miner
 
 A Stratum V2 (Sv2) CPU miner implementation based on:
-- [Stratum V2 Reference Implementation](https://github.com/stratum-mining/stratum)
-- [`sv2-services`](https://github.com/plebhash/sv2-services)
+- [`stratum`](https://github.com/stratum-mining/stratum)
+- [`sv2-apps`](https://github.com/stratum-mining/sv2-apps) (via the `stratum-apps` crate)
 - [`tokio`](https://tokio.rs)
 
 ## Features

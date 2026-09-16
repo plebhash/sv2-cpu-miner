@@ -2,90 +2,145 @@ use crate::config::CPU_THROTTLE_WINDOW_MS;
 use crate::config::Sv2CpuMinerConfig;
 use crate::handler::Sv2CpuMinerClientHandler;
 use anyhow::{Result, anyhow};
-use bitcoin::{
+use stratum_apps::network_helpers::noise_connection::Connection;
+use stratum_apps::stratum_core::bitcoin::{
     CompactTarget,
     blockdata::block::{Header, Version},
     hashes::sha256d::Hash,
 };
-use sv2_services::client::service::Sv2ClientService;
-use sv2_services::client::service::config::Sv2ClientServiceConfig;
-use sv2_services::client::service::config::Sv2ClientServiceMiningConfig;
-use sv2_services::client::service::event::Sv2ClientEvent;
-use sv2_services::client::service::subprotocols::template_distribution::handler::NullSv2TemplateDistributionClientHandler;
-use sv2_services::roles_logic_sv2::utils::u256_to_block_hash;
+use stratum_apps::stratum_core::channels_sv2::target::u256_to_block_hash;
+use stratum_apps::stratum_core::codec_sv2::MessageFrame;
+use stratum_apps::stratum_core::common_messages_sv2::{Protocol, SetupConnectionOwned};
+use stratum_apps::stratum_core::handlers_sv2::{
+    HandleCommonMessagesFromServerOwnedAsync, HandleMiningMessagesFromServerOwnedAsync,
+};
+use stratum_apps::stratum_core::noise_sv2::Initiator;
+use stratum_apps::stratum_core::parsers_sv2::AnyMessageOwned;
+use tokio::net::TcpStream;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
+pub type Message = AnyMessageOwned;
+pub type StdFrame = MessageFrame<Message>;
+
 #[derive(Clone)]
 pub struct Sv2CpuMiner {
-    sv2_client_service:
-        Sv2ClientService<Sv2CpuMinerClientHandler, NullSv2TemplateDistributionClientHandler>,
+    config: Sv2CpuMinerConfig,
+    nominal_hashrate: f32,
     cancellation_token: CancellationToken,
 }
 
 impl Sv2CpuMiner {
     pub async fn new(config: Sv2CpuMinerConfig) -> Result<Self> {
-        let service_config = Sv2ClientServiceConfig {
-            min_supported_version: 2,
-            max_supported_version: 2,
-            endpoint_host: None,
-            endpoint_port: None,
-            vendor: None,
-            hardware_version: None,
-            firmware: None,
-            device_id: Some(config.device_id),
-            mining_config: Some(Sv2ClientServiceMiningConfig {
-                server_addr: config.server_addr,
-                auth_pk: config.auth_pk,
-                // REQUIRES_VERSION_ROLLING, !REQUIRES_WORK_SELECTION, REQUIRES_STANDARD_JOBS
-                setup_connection_flags: 0b001_u32,
-            }),
-            job_declaration_config: None,
-            template_distribution_config: None,
-        };
-
-        let template_distribution_handler = NullSv2TemplateDistributionClientHandler;
-
-        let cancellation_token = CancellationToken::new();
-        let (tx, rx) = async_channel::unbounded::<Sv2ClientEvent<'static>>();
-
         let nominal_hashrate = measure_hashrate(config.cpu_usage_percent).await;
 
-        let mining_handler = Sv2CpuMinerClientHandler::new(
-            config.user_identity,
-            nominal_hashrate,
-            config.nominal_hashrate_multiplier,
-            config.n_extended_channels,
-            config.n_standard_channels,
-            config.single_submit,
-            config.cpu_usage_percent,
-            tx,
-            cancellation_token.clone(),
-        );
-
-        let sv2_client_service = Sv2ClientService::new_with_event_injector(
-            service_config,
-            mining_handler,
-            template_distribution_handler,
-            rx,
-            cancellation_token.clone(),
-        )
-        .map_err(|e| anyhow!("Failed to create Sv2ClientService: {:?}", e))?;
-
         Ok(Self {
-            sv2_client_service,
-            cancellation_token,
+            config,
+            nominal_hashrate,
+            cancellation_token: CancellationToken::new(),
         })
     }
 
     pub async fn start(&mut self) -> Result<()> {
-        self.sv2_client_service
-            .start()
-            .await
-            .map_err(|e| anyhow!("Failed to start Sv2ClientService: {:?}", e))?;
+        let socket = TcpStream::connect(self.config.server_addr).await?;
+        let initiator = Initiator::new(self.config.auth_pk.as_ref().map(|k| k.0));
+        let (receiver, sender) =
+            Connection::connect::<StdFrame>(socket, initiator, self.cancellation_token.clone())
+                .await
+                .map_err(|e| anyhow!("Failed to establish noise connection: {:?}", e))?;
 
-        Ok(())
+        let mut handler = Sv2CpuMinerClientHandler::new(
+            self.config.user_identity.clone(),
+            self.nominal_hashrate,
+            self.config.nominal_hashrate_multiplier,
+            self.config.n_extended_channels,
+            self.config.n_standard_channels,
+            self.config.single_submit,
+            self.config.cpu_usage_percent,
+            sender.clone(),
+            self.cancellation_token.clone(),
+        );
+
+        // The pool rejects OpenExtendedMiningChannel on connections that declare
+        // REQUIRES_STANDARD_JOBS. So the flag is only set when no extended channels are
+        // requested (keeping ungrouped per-channel NewMiningJob for standard channels);
+        // with extended channels the connection runs in group mode instead.
+        let flags = if self.config.n_extended_channels > 0 {
+            0b000_u32
+        } else {
+            // REQUIRES_STANDARD_JOBS, !REQUIRES_WORK_SELECTION, !REQUIRES_VERSION_ROLLING
+            0b001_u32
+        };
+
+        let setup_connection = SetupConnectionOwned {
+            protocol: Protocol::MiningProtocol,
+            min_version: 2,
+            max_version: 2,
+            flags,
+            endpoint_host: self
+                .config
+                .server_addr
+                .ip()
+                .to_string()
+                .try_into()
+                .expect("host must fit in Str0255"),
+            endpoint_port: self.config.server_addr.port(),
+            vendor: "".try_into().expect("empty string is valid Str0255"),
+            hardware_version: "".try_into().expect("empty string is valid Str0255"),
+            firmware: "".try_into().expect("empty string is valid Str0255"),
+            device_id: self
+                .config
+                .device_id
+                .clone()
+                .try_into()
+                .expect("device_id must fit in Str0255"),
+        };
+        let frame: StdFrame = Message::Common(setup_connection.into())
+            .try_into()
+            .expect("SetupConnection must be serializable");
+        sender
+            .send(frame)
+            .await
+            .map_err(|e| anyhow!("Failed to send SetupConnection: {}", e))?;
+
+        let mut incoming = receiver
+            .recv()
+            .await
+            .map_err(|e| anyhow!("Connection closed during SetupConnection: {}", e))?;
+        let header = incoming.header();
+        handler
+            .handle_common_message_frame_from_server(None, header, incoming.payload())
+            .await
+            .map_err(|e| anyhow!("SetupConnection failed: {:?}", e))?;
+
+        handler.open_channels().await?;
+
+        loop {
+            tokio::select! {
+                _ = self.cancellation_token.cancelled() => {
+                    return Ok(());
+                }
+                frame = receiver.recv() => {
+                    match frame {
+                        Ok(mut frame) => {
+                            let header = frame.header();
+                            if let Err(e) = handler
+                                .handle_mining_message_frame_from_server(None, header, frame.payload())
+                                .await
+                            {
+                                error!("Failed to handle message from server: {:?}", e);
+                            }
+                        }
+                        Err(_) => {
+                            error!("Connection closed by server");
+                            self.cancellation_token.cancel();
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub async fn shutdown(&mut self) {
