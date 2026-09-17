@@ -24,3 +24,6 @@ cpu_usage_percent = 100
 # value to multiply the advertised nominal hashrate during channel opening
 # valid values: nominal_hashrate_multiplier >= 0.0
 nominal_hashrate_multiplier = 1.0
+
+# optional path to a log file (logs always go to stdout too); -f/--log-file overrides it
+# log_file = "sv2-cpu-miner.log"

@@ -1,34 +1,19 @@
-use sv2_cpu_miner::client::Sv2CpuMiner;
-use sv2_cpu_miner::config::Sv2CpuMinerConfig;
+mod args;
 
-use clap::Parser;
-use std::path::PathBuf;
 use std::process::ExitCode;
 use stratum_apps::config_helpers::logging::init_logging;
+use sv2_cpu_miner::client::Sv2CpuMiner;
 
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    /// Path to the TOML configuration file
-    #[arg(short, long, default_value = "config.toml")]
-    config: PathBuf,
-    /// Path to the log file. If not set, logs will only be written to stdout.
-    #[arg(short = 'f', long = "log-file")]
-    log_file: Option<PathBuf>,
-}
+use crate::args::process_cli_args;
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    // Parse command line arguments
-    let args = Args::parse();
-
-    // Load configuration from file, with CPU_MINER__* environment overrides
-    let config = Sv2CpuMinerConfig::load(args.config).unwrap_or_else(|e| {
+    let config = process_cli_args().unwrap_or_else(|e| {
         eprintln!("Sv2 CPU Miner config error: {e}");
         std::process::exit(1);
     });
 
-    init_logging(args.log_file.as_deref());
+    init_logging(config.log_file.as_deref());
 
     // Create and start the client
     let mut client = Sv2CpuMiner::new(config).await;

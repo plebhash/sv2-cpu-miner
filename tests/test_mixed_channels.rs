@@ -32,6 +32,7 @@ async fn test_mining_client_mixed_channels() {
         single_submit: false,
         cpu_usage_percent: 100,
         nominal_hashrate_multiplier: 1.0,
+        log_file: None,
     };
 
     let client = Sv2CpuMiner::new(config).await;
