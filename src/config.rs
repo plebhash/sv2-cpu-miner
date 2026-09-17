@@ -1,13 +1,17 @@
 use crate::error::Sv2CpuMinerError;
 use serde::Deserialize;
-use std::fs;
 use std::net::SocketAddr;
 use std::path::Path;
+use stratum_apps::config_helpers::load_config;
 use stratum_apps::key_utils::Secp256k1PublicKey;
 
 /// Duration of each CPU throttling cycle in milliseconds
 /// The miner will work for N% of this window, then sleep for (100-N)% of this window
 pub const CPU_THROTTLE_WINDOW_MS: u64 = 100;
+
+/// Prefix for environment variables that override config file values, e.g.
+/// `CPU_MINER__SERVER_ADDR`.
+pub const ENV_PREFIX: &str = "CPU_MINER";
 
 #[derive(Clone, Deserialize)]
 pub struct Sv2CpuMinerConfig {
@@ -23,9 +27,8 @@ pub struct Sv2CpuMinerConfig {
 }
 
 impl Sv2CpuMinerConfig {
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Sv2CpuMinerError> {
-        let contents = fs::read_to_string(path)?;
-        let config: Self = toml::from_str(&contents)?;
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, Sv2CpuMinerError> {
+        let config: Self = load_config(path, ENV_PREFIX, &[], &[])?;
 
         if config.nominal_hashrate_multiplier <= 0.0 {
             return Err(Sv2CpuMinerError::InvalidConfig(
@@ -87,15 +90,15 @@ nominal_hashrate_multiplier = 1.0
     #[test]
     fn example_config_loads() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/config.toml");
-        let config = Sv2CpuMinerConfig::from_file(path)
-            .unwrap_or_else(|e| panic!("config.toml must load: {e}"));
+        let config =
+            Sv2CpuMinerConfig::load(path).unwrap_or_else(|e| panic!("config.toml must load: {e}"));
         assert!(config.auth_pk.is_some());
     }
 
     #[test]
     fn rejects_user_identity_over_255_bytes() {
         let path = write_temp_config("long-user-identity", &"x".repeat(256));
-        let err = Sv2CpuMinerConfig::from_file(&path)
+        let err = Sv2CpuMinerConfig::load(&path)
             .err()
             .expect("oversized user_identity must be rejected");
         let _ = std::fs::remove_file(&path);
@@ -103,5 +106,15 @@ nominal_hashrate_multiplier = 1.0
             err,
             Sv2CpuMinerError::InvalidConfig(msg) if msg.contains("user_identity")
         ));
+    }
+
+    #[test]
+    fn env_var_overrides_file_value() {
+        // SAFETY: the tests in this module are the only writers of this variable.
+        unsafe { std::env::set_var("CPU_MINER__N_STANDARD_CHANNELS", "7") };
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/config.toml");
+        let config = Sv2CpuMinerConfig::load(path).unwrap_or_else(|e| panic!("{e}"));
+        unsafe { std::env::remove_var("CPU_MINER__N_STANDARD_CHANNELS") };
+        assert_eq!(config.n_standard_channels, 7);
     }
 }

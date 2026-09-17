@@ -15,7 +15,7 @@ use std::process::ExitCode;
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Path to the TOML configuration file
-    #[arg(short, long)]
+    #[arg(short, long, default_value = "config.toml")]
     config: PathBuf,
 }
 
@@ -27,8 +27,8 @@ async fn main() -> ExitCode {
     // Parse command line arguments
     let args = Args::parse();
 
-    // Load configuration from file
-    let config = Sv2CpuMinerConfig::from_file(args.config).unwrap_or_else(|e| {
+    // Load configuration from file, with CPU_MINER__* environment overrides
+    let config = Sv2CpuMinerConfig::load(args.config).unwrap_or_else(|e| {
         eprintln!("Sv2 CPU Miner config error: {e}");
         std::process::exit(1);
     });

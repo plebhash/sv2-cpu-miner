@@ -5,6 +5,7 @@
 //! the same shape the `sv2-apps` miner apps use for their error kinds.
 
 use std::fmt;
+use stratum_apps::config_helpers::ConfigError;
 use stratum_apps::network_helpers;
 use stratum_apps::stratum_core::handlers_sv2::HandlerErrorType;
 use stratum_apps::stratum_core::parsers_sv2::ParserError;
@@ -12,10 +13,10 @@ use stratum_apps::utils::types::{ExtensionType, MessageType};
 
 #[derive(Debug)]
 pub enum Sv2CpuMinerError {
-    /// Errors on bad `TcpStream` connection or config file read.
+    /// Errors on bad `TcpStream` connection.
     Io(std::io::Error),
-    /// Errors on bad config TOML deserialize.
-    BadConfigDeserialize(toml::de::Error),
+    /// Errors loading the config from file or environment.
+    BadConfigDeserialize(ConfigError),
     /// Config values that deserialize but fail validation.
     InvalidConfig(&'static str),
     /// Error from the network helpers library.
@@ -39,7 +40,7 @@ impl fmt::Display for Sv2CpuMinerError {
         use Sv2CpuMinerError::*;
         match self {
             Io(e) => write!(f, "I/O error: {e}"),
-            BadConfigDeserialize(e) => write!(f, "bad config TOML: {e}"),
+            BadConfigDeserialize(e) => write!(f, "bad config: {e}"),
             InvalidConfig(msg) => write!(f, "invalid config: {msg}"),
             NetworkHelpers(e) => write!(f, "network error: {e}"),
             ChannelErrorSender => write!(f, "channel send failed: connection closed"),
@@ -60,8 +61,8 @@ impl From<std::io::Error> for Sv2CpuMinerError {
     }
 }
 
-impl From<toml::de::Error> for Sv2CpuMinerError {
-    fn from(e: toml::de::Error) -> Self {
+impl From<ConfigError> for Sv2CpuMinerError {
+    fn from(e: ConfigError) -> Self {
         Self::BadConfigDeserialize(e)
     }
 }

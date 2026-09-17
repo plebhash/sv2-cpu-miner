@@ -28,6 +28,8 @@ First, modify `config.toml` with the desired configuration. Then, you can run th
 $ cargo run -- -c config.toml
 ```
 
+Any field in `config.toml` can be overridden with a `CPU_MINER__<FIELD>` environment variable, for example `CPU_MINER__SERVER_ADDR=127.0.0.1:34254`.
+
 ## License
 
 This project is licensed under the MIT License.

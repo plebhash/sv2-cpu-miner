@@ -11,7 +11,6 @@ tokio = { version = "1", features = ["full", "tracing", "signal"] }
 tokio-util = "0.7.15"
 tracing = "0.1"
 clap = { version = "4.4", features = ["derive"] }
-toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 async-channel = "1.5.1"
 tracing-subscriber = "0.3.19"
