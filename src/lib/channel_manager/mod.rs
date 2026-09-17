@@ -7,8 +7,8 @@ use stratum_apps::stratum_core::mining_sv2::{
 use stratum_apps::stratum_core::parsers_sv2::MiningOwned;
 use stratum_apps::utils::types::{Message, OutboundFrame};
 
-use crate::miner::extended::ExtendedMiner;
-use crate::miner::standard::StandardMiner;
+use crate::miner::extended::ExtendedChannelMiner;
+use crate::miner::standard::StandardChannelMiner;
 
 use crate::error::Sv2CpuMinerError;
 use tokio_util::sync::CancellationToken;
@@ -26,8 +26,8 @@ pub struct ChannelManager {
     single_submit: bool,
     cpu_usage_percent: u64,
     requires_standard_jobs: bool,
-    extended_channels: HashMap<u32, ExtendedMiner>,
-    standard_channels: HashMap<u32, StandardMiner>,
+    extended_channels: HashMap<u32, ExtendedChannelMiner>,
+    standard_channels: HashMap<u32, StandardChannelMiner>,
     // every channel belongs to a group (spec 5.2.3); a server may run several groups on one
     // connection and redefine them with SetGroupChannel, so membership is tracked per group id
     // and server messages addressed to a group id fan out to that group's members only

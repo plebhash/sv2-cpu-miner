@@ -1,7 +1,7 @@
 use super::ChannelManager;
 use crate::error::Sv2CpuMinerError;
-use crate::miner::extended::ExtendedMiner;
-use crate::miner::standard::StandardMiner;
+use crate::miner::extended::ExtendedChannelMiner;
+use crate::miner::standard::StandardChannelMiner;
 use stratum_apps::stratum_core::bitcoin::Target;
 use stratum_apps::stratum_core::channels_sv2::client::extended::ExtendedChannel;
 use stratum_apps::stratum_core::channels_sv2::client::group::GroupChannel;
@@ -159,7 +159,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
 
         self.standard_channels.insert(
             open_standard_mining_channel_success.channel_id,
-            StandardMiner::new(
+            StandardChannelMiner::new(
                 standard_channel,
                 self.cpu_usage_percent,
                 self.single_submit,
@@ -227,7 +227,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
 
         self.extended_channels.insert(
             open_extended_mining_channel_success.channel_id,
-            ExtendedMiner::new(
+            ExtendedChannelMiner::new(
                 extended_channel,
                 self.cpu_usage_percent,
                 self.single_submit,

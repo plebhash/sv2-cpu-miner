@@ -24,7 +24,7 @@ use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info};
 
-pub struct ExtendedMiner {
+pub struct ExtendedChannelMiner {
     extended_channel: SharedRw<ExtendedChannel>,
     upstream_sender: async_channel::Sender<OutboundFrame>,
     global_cancellation_token: CancellationToken,
@@ -33,7 +33,7 @@ pub struct ExtendedMiner {
     cpu_usage_percent: u64,
 }
 
-impl ExtendedMiner {
+impl ExtendedChannelMiner {
     pub fn new(
         extended_channel: ExtendedChannel,
         cpu_usage_percent: u64,
