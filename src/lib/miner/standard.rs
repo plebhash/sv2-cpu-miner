@@ -7,6 +7,7 @@ use stratum_apps::stratum_core::bitcoin::{
     blockdata::block::{Header, Version},
     hashes::sha256d::Hash,
 };
+use stratum_apps::stratum_core::channels_sv2::client::share_accounting::ShareValidationResult;
 use stratum_apps::stratum_core::channels_sv2::client::standard::StandardChannel;
 use stratum_apps::stratum_core::channels_sv2::extranonce_manager::ExtranoncePrefix;
 use stratum_apps::stratum_core::channels_sv2::target::u256_to_block_hash;
@@ -21,7 +22,7 @@ use super::CPU_THROTTLE_WINDOW_MS;
 
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// A standard channel and the task hashing on its active job. A new active job or prev hash
 /// replaces the task.
@@ -264,7 +265,7 @@ async fn mine_job(
                 // is share valid?
                 if hash_as_target <= channel_target {
                     // log share on channel state
-                    let Ok(share) = standard_channel.write(|channel| {
+                    let Ok((share, share_validation_result)) = standard_channel.write(|channel| {
                         let sequence_number = channel
                             .get_share_accounting()
                             .get_last_share_sequence_number()
@@ -277,31 +278,45 @@ async fn mine_job(
                             ntime,
                             version,
                         };
-                        let _ = channel.validate_share(share.clone());
-                        share
+                        let share_validation_result = channel.validate_share(share.clone());
+                        (share, share_validation_result)
                     }) else {
                         error!("Channel lock poisoned, stopping the miner task");
                         return;
                     };
 
-                    let submit = async {
-                        let frame = OutboundFrame::from_message(Message::Mining(
-                            MiningOwned::SubmitSharesStandard(share.clone()),
-                        ))?;
-                        upstream_sender.send(frame).await?;
-                        Ok::<(), Sv2CpuMinerError>(())
-                    };
-
-                    match submit.await {
-                        Ok(()) => {
-                            info!("Submitting share: {}", share);
-                            if let Some(ref single_submit_cancellation_token) = single_submit_cancellation_token {
-                                info!("Single submit enabled, cancelling miner task");
-                                single_submit_cancellation_token.cancel();
-                            }
-                        }
+                    // the channel re-derives the share from its own job state and decides
+                    // whether it is worth submitting; only validated shares advance the
+                    // sequence number
+                    match share_validation_result {
                         Err(e) => {
-                            error!("Failed to submit share: {}", e);
+                            warn!("Not submitting share rejected by channel validation: {:?}, share: {}", e, share);
+                        }
+                        Ok(result) => {
+                            if let ShareValidationResult::BlockFound(hash) = result {
+                                info!("Block found! hash: {}, share: {}", hash, share);
+                            }
+
+                            let submit = async {
+                                let frame = OutboundFrame::from_message(Message::Mining(
+                                    MiningOwned::SubmitSharesStandard(share.clone()),
+                                ))?;
+                                upstream_sender.send(frame).await?;
+                                Ok::<(), Sv2CpuMinerError>(())
+                            };
+
+                            match submit.await {
+                                Ok(()) => {
+                                    info!("Submitting share: {}", share);
+                                    if let Some(ref single_submit_cancellation_token) = single_submit_cancellation_token {
+                                        info!("Single submit enabled, cancelling miner task");
+                                        single_submit_cancellation_token.cancel();
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to submit share: {}", e);
+                                }
+                            }
                         }
                     }
                 }
@@ -328,22 +343,93 @@ async fn mine_job(
 mod tests {
     use super::*;
     use std::panic::{AssertUnwindSafe, catch_unwind};
+    use stratum_apps::stratum_core::binary_sv2::Sv2OptionOwned;
     use stratum_apps::stratum_core::channels_sv2::client::standard::StandardChannel;
+    use tokio::time::timeout;
 
-    #[test]
-    fn poisoned_lock_is_an_error_not_a_panic() {
-        let channel = StandardChannel::new(
+    fn channel(target: Target) -> StandardChannel {
+        StandardChannel::new(
             1,
             "user".to_string(),
             ExtranoncePrefix::from_wire(vec![0; 32]).unwrap(),
-            Target::from_le_bytes([0xff; 32]),
+            target,
             1.0,
             None,
         )
-        .unwrap();
+        .unwrap()
+    }
+
+    /// A miner whose job 1 is active under `channel_target`, with the mining task spawned but
+    /// not yet started: a current-thread runtime only runs it once the test awaits.
+    fn miner_with_active_job(
+        channel_target: Target,
+    ) -> (StandardChannelMiner, async_channel::Receiver<OutboundFrame>) {
+        let (upstream_sender, receiver) = async_channel::unbounded();
+        let mut miner = StandardChannelMiner::new(
+            channel(channel_target),
+            100,
+            false,
+            upstream_sender,
+            CancellationToken::new(),
+        );
+        miner
+            .on_new_mining_job(NewMiningJobOwned {
+                channel_id: 1,
+                job_id: 1,
+                min_ntime: Sv2OptionOwned::new(None),
+                version: 536870912,
+                merkle_root: [0u8; 32].into(),
+            })
+            .unwrap();
+        miner
+            .on_set_new_prev_hash(SetNewPrevHashOwned {
+                channel_id: 1,
+                job_id: 1,
+                prev_hash: [0u8; 32].into(),
+                nbits: 453040064,
+                min_ntime: 1745596970,
+            })
+            .unwrap();
+        (miner, receiver)
+    }
+
+    #[tokio::test]
+    async fn shares_the_channel_accepts_are_submitted() {
+        let (miner, receiver) = miner_with_active_job(Target::from_le_bytes([0xff; 32]));
+
+        assert!(
+            timeout(Duration::from_secs(5), receiver.recv())
+                .await
+                .is_ok(),
+            "no share reached the upstream sender"
+        );
+        miner.miner_cancellation_token.cancel();
+    }
+
+    /// The miner's pre-check uses the channel target, relaxed here after the job became active,
+    /// so it finds "shares" at once; the job keeps its unreachable target, so the channel rejects
+    /// every one of them and none may be submitted.
+    #[tokio::test]
+    async fn shares_the_channel_rejects_are_not_submitted() {
+        let mut unreachable = [0u8; 32];
+        unreachable[0] = 1;
+        let (mut miner, receiver) = miner_with_active_job(Target::from_le_bytes(unreachable));
+        miner.set_target(Target::from_le_bytes([0xff; 32])).unwrap();
+
+        assert!(
+            timeout(Duration::from_millis(300), receiver.recv())
+                .await
+                .is_err(),
+            "a share the channel rejected was submitted"
+        );
+        miner.miner_cancellation_token.cancel();
+    }
+
+    #[test]
+    fn poisoned_lock_is_an_error_not_a_panic() {
         let (upstream_sender, _receiver) = async_channel::unbounded();
         let mut miner = StandardChannelMiner::new(
-            channel,
+            channel(Target::from_le_bytes([0xff; 32])),
             100,
             false,
             upstream_sender,

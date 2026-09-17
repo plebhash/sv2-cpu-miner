@@ -9,6 +9,7 @@ use stratum_apps::stratum_core::bitcoin::{
     hashes::sha256d::Hash,
 };
 use stratum_apps::stratum_core::channels_sv2::client::extended::ExtendedChannel;
+use stratum_apps::stratum_core::channels_sv2::client::share_accounting::ShareValidationResult;
 use stratum_apps::stratum_core::channels_sv2::extranonce_manager::ExtranoncePrefix;
 use stratum_apps::stratum_core::channels_sv2::merkle_root::merkle_root_from_path;
 use stratum_apps::stratum_core::channels_sv2::target::u256_to_block_hash;
@@ -23,7 +24,7 @@ use super::CPU_THROTTLE_WINDOW_MS;
 
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// An extended channel and the task hashing on its active job. A new active job or prev hash
 /// replaces the task.
@@ -269,7 +270,7 @@ async fn mine_job(
                 // is share valid?
                 if hash_as_target <= channel_target {
                     // log share on channel state
-                    let Ok(share) = extended_channel.write(|channel| {
+                    let Ok((share, share_validation_result)) = extended_channel.write(|channel| {
                         let sequence_number = channel
                             .get_share_accounting()
                             .get_last_share_sequence_number()
@@ -283,31 +284,45 @@ async fn mine_job(
                             version,
                             extranonce: extranonce.clone().try_into().expect("extranonce must be serializable"),
                         };
-                        let _ = channel.validate_share(share.clone());
-                        share
+                        let share_validation_result = channel.validate_share(share.clone());
+                        (share, share_validation_result)
                     }) else {
                         error!("Channel lock poisoned, stopping the miner task");
                         return;
                     };
 
-                    let submit = async {
-                        let frame = OutboundFrame::from_message(Message::Mining(
-                            MiningOwned::SubmitSharesExtended(share.clone()),
-                        ))?;
-                        upstream_sender.send(frame).await?;
-                        Ok::<(), Sv2CpuMinerError>(())
-                    };
-
-                    match submit.await {
-                        Ok(()) => {
-                            info!("Submitting share: {}", share);
-                            if let Some(ref single_submit_cancellation_token) = single_submit_cancellation_token {
-                                info!("Single submit enabled, cancelling miner task");
-                                single_submit_cancellation_token.cancel();
-                            }
-                        }
+                    // the channel re-derives the share from its own job state and decides
+                    // whether it is worth submitting; only validated shares advance the
+                    // sequence number
+                    match share_validation_result {
                         Err(e) => {
-                            error!("Failed to submit share: {}", e);
+                            warn!("Not submitting share rejected by channel validation: {:?}, share: {}", e, share);
+                        }
+                        Ok(result) => {
+                            if let ShareValidationResult::BlockFound(hash) = result {
+                                info!("Block found! hash: {}, share: {}", hash, share);
+                            }
+
+                            let submit = async {
+                                let frame = OutboundFrame::from_message(Message::Mining(
+                                    MiningOwned::SubmitSharesExtended(share.clone()),
+                                ))?;
+                                upstream_sender.send(frame).await?;
+                                Ok::<(), Sv2CpuMinerError>(())
+                            };
+
+                            match submit.await {
+                                Ok(()) => {
+                                    info!("Submitting share: {}", share);
+                                    if let Some(ref single_submit_cancellation_token) = single_submit_cancellation_token {
+                                        info!("Single submit enabled, cancelling miner task");
+                                        single_submit_cancellation_token.cancel();
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to submit share: {}", e);
+                                }
+                            }
                         }
                     }
                 }
