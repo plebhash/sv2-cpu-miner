@@ -21,36 +21,17 @@ use stratum_apps::stratum_core::mining_sv2::{
     SetGroupChannelOwned, SetNewPrevHashOwned, SetTargetOwned, SubmitSharesErrorOwned,
     SubmitSharesSuccessOwned, UpdateChannelErrorOwned,
 };
-use stratum_apps::stratum_core::parsers_sv2::{MiningOwned, ParserError, Tlv};
+use stratum_apps::stratum_core::parsers_sv2::{MiningOwned, Tlv};
 
 use stratum_apps::stratum_core::bitcoin::Target;
 
 use crate::miner::extended::ExtendedMiner;
 use crate::miner::standard::StandardMiner;
 
-use anyhow::{Result, anyhow};
+use crate::error::Sv2CpuMinerError;
 use tokio_util::sync::CancellationToken;
 
 use tracing::{debug, error, info};
-
-#[derive(Debug)]
-// fields are read through the Debug impl when errors are logged
-#[allow(dead_code)]
-pub enum HandlerError {
-    UnexpectedMessage(u16, u8),
-    Parse(ParserError),
-    SetupConnectionFailed,
-}
-
-impl HandlerErrorType for HandlerError {
-    fn unexpected_message(extension_type: u16, message_type: u8) -> Self {
-        Self::UnexpectedMessage(extension_type, message_type)
-    }
-
-    fn parse_error(error: ParserError) -> Self {
-        Self::Parse(error)
-    }
-}
 
 pub struct Sv2CpuMinerClientHandler {
     user_identity: String,
@@ -98,7 +79,7 @@ impl Sv2CpuMinerClientHandler {
         }
     }
 
-    pub async fn open_channels(&mut self) -> Result<()> {
+    pub async fn open_channels(&mut self) -> Result<(), Sv2CpuMinerError> {
         let nominal_hashrate_per_channel = (self.nominal_hashrate
             * self.nominal_hashrate_multiplier)
             / (self.n_standard_channels + self.n_extended_channels) as f32;
@@ -123,10 +104,7 @@ impl Sv2CpuMinerClientHandler {
             ))
             .try_into()
             .expect("OpenStandardMiningChannel must be serializable");
-            self.event_injector
-                .send(frame)
-                .await
-                .map_err(|e| anyhow!("Failed to send OpenStandardMiningChannel: {}", e))?;
+            self.event_injector.send(frame).await?;
         }
 
         for i in 0..self.n_extended_channels {
@@ -150,10 +128,7 @@ impl Sv2CpuMinerClientHandler {
             ))
             .try_into()
             .expect("OpenExtendedMiningChannel must be serializable");
-            self.event_injector
-                .send(frame)
-                .await
-                .map_err(|e| anyhow!("Failed to send OpenExtendedMiningChannel: {}", e))?;
+            self.event_injector.send(frame).await?;
         }
 
         Ok(())
@@ -161,7 +136,7 @@ impl Sv2CpuMinerClientHandler {
 }
 
 impl HandleCommonMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
-    type Error = HandlerError;
+    type Error = Sv2CpuMinerError;
 
     fn get_negotiated_extensions_with_server(
         &self,
@@ -187,7 +162,7 @@ impl HandleCommonMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
         _tlv_fields: Option<&[Tlv]>,
     ) -> Result<(), Self::Error> {
         error!("Received SetupConnection.Error: {}", msg);
-        Err(HandlerError::SetupConnectionFailed)
+        Err(Sv2CpuMinerError::SetupConnectionFailed)
     }
 
     async fn handle_channel_endpoint_changed(
@@ -197,7 +172,7 @@ impl HandleCommonMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
         _tlv_fields: Option<&[Tlv]>,
     ) -> Result<(), Self::Error> {
         error!("Received unexpected ChannelEndpointChanged");
-        Err(HandlerError::unexpected_message(
+        Err(Sv2CpuMinerError::unexpected_message(
             0,
             MESSAGE_TYPE_CHANNEL_ENDPOINT_CHANGED,
         ))
@@ -210,12 +185,15 @@ impl HandleCommonMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
         _tlv_fields: Option<&[Tlv]>,
     ) -> Result<(), Self::Error> {
         error!("Received unexpected Reconnect");
-        Err(HandlerError::unexpected_message(0, MESSAGE_TYPE_RECONNECT))
+        Err(Sv2CpuMinerError::unexpected_message(
+            0,
+            MESSAGE_TYPE_RECONNECT,
+        ))
     }
 }
 
 impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
-    type Error = HandlerError;
+    type Error = Sv2CpuMinerError;
 
     fn get_channel_type_for_server(&self, _server_id: Option<usize>) -> SupportedChannelTypes {
         SupportedChannelTypes::StandardAndExtended
@@ -783,7 +761,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
         _tlv_fields: Option<&[Tlv]>,
     ) -> Result<(), Self::Error> {
         error!("Received unexpected SetCustomMiningJob.Success");
-        Err(HandlerError::unexpected_message(
+        Err(Sv2CpuMinerError::unexpected_message(
             0,
             MESSAGE_TYPE_SET_CUSTOM_MINING_JOB_SUCCESS,
         ))
@@ -796,7 +774,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
         _tlv_fields: Option<&[Tlv]>,
     ) -> Result<(), Self::Error> {
         error!("Received unexpected SetCustomMiningJob.Error");
-        Err(HandlerError::unexpected_message(
+        Err(Sv2CpuMinerError::unexpected_message(
             0,
             MESSAGE_TYPE_SET_CUSTOM_MINING_JOB_ERROR,
         ))
@@ -876,7 +854,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
         _tlv_fields: Option<&[Tlv]>,
     ) -> Result<(), Self::Error> {
         error!("Received unexpected SetGroupChannel");
-        Err(HandlerError::unexpected_message(
+        Err(Sv2CpuMinerError::unexpected_message(
             0,
             MESSAGE_TYPE_SET_GROUP_CHANNEL,
         ))

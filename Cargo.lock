@@ -3920,7 +3920,6 @@ dependencies = [
 name = "sv2-cpu-miner"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "async-channel",
  "clap",
  "integration_tests_sv2",

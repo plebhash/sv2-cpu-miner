@@ -1,7 +1,7 @@
 use crate::config::CPU_THROTTLE_WINDOW_MS;
 use crate::config::Sv2CpuMinerConfig;
+use crate::error::Sv2CpuMinerError;
 use crate::handler::Sv2CpuMinerClientHandler;
-use anyhow::{Result, anyhow};
 use stratum_apps::network_helpers::noise_connection::Connection;
 use stratum_apps::stratum_core::bitcoin::{
     CompactTarget,
@@ -42,13 +42,12 @@ impl Sv2CpuMiner {
         }
     }
 
-    pub async fn start(&mut self) -> Result<()> {
+    pub async fn start(&mut self) -> Result<(), Sv2CpuMinerError> {
         let socket = TcpStream::connect(self.config.server_addr).await?;
         let initiator = Initiator::new(self.config.auth_pk.as_ref().map(|k| k.0));
         let (receiver, sender) =
             Connection::connect::<StdFrame>(socket, initiator, self.cancellation_token.clone())
-                .await
-                .map_err(|e| anyhow!("Failed to establish noise connection: {:?}", e))?;
+                .await?;
 
         let mut handler = Sv2CpuMinerClientHandler::new(
             self.config.user_identity.clone(),
@@ -99,20 +98,13 @@ impl Sv2CpuMiner {
         let frame: StdFrame = Message::Common(setup_connection.into())
             .try_into()
             .expect("SetupConnection must be serializable");
-        sender
-            .send(frame)
-            .await
-            .map_err(|e| anyhow!("Failed to send SetupConnection: {}", e))?;
+        sender.send(frame).await?;
 
-        let mut incoming = receiver
-            .recv()
-            .await
-            .map_err(|e| anyhow!("Connection closed during SetupConnection: {}", e))?;
+        let mut incoming = receiver.recv().await?;
         let header = incoming.header();
         handler
             .handle_common_message_frame_from_server(None, header, incoming.payload())
-            .await
-            .map_err(|e| anyhow!("SetupConnection failed: {:?}", e))?;
+            .await?;
 
         handler.open_channels().await?;
 

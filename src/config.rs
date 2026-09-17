@@ -1,3 +1,4 @@
+use crate::error::Sv2CpuMinerError;
 use serde::Deserialize;
 use std::fs;
 use std::net::SocketAddr;
@@ -22,16 +23,20 @@ pub struct Sv2CpuMinerConfig {
 }
 
 impl Sv2CpuMinerConfig {
-    pub fn from_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Sv2CpuMinerError> {
         let contents = fs::read_to_string(path)?;
         let config: Self = toml::from_str(&contents)?;
 
         if config.nominal_hashrate_multiplier <= 0.0 {
-            anyhow::bail!("nominal_hashrate_multiplier must be greater than 0.0");
+            return Err(Sv2CpuMinerError::InvalidConfig(
+                "nominal_hashrate_multiplier must be greater than 0.0",
+            ));
         }
 
         if config.cpu_usage_percent == 0 || config.cpu_usage_percent > 100 {
-            anyhow::bail!("cpu_usage_percent must be between 1 and 100");
+            return Err(Sv2CpuMinerError::InvalidConfig(
+                "cpu_usage_percent must be between 1 and 100",
+            ));
         }
 
         Ok(config)
