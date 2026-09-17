@@ -39,6 +39,69 @@ impl Sv2CpuMinerConfig {
             ));
         }
 
+        if config.user_identity.len() > 255 {
+            return Err(Sv2CpuMinerError::InvalidConfig(
+                "user_identity must be at most 255 bytes",
+            ));
+        }
+
+        if config.device_id.len() > 255 {
+            return Err(Sv2CpuMinerError::InvalidConfig(
+                "device_id must be at most 255 bytes",
+            ));
+        }
+
         Ok(config)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn write_temp_config(name: &str, user_identity: &str) -> PathBuf {
+        let path =
+            std::env::temp_dir().join(format!("sv2-cpu-miner-{name}-{}.toml", std::process::id()));
+        std::fs::write(
+            &path,
+            format!(
+                r#"
+server_addr = "127.0.0.1:3333"
+n_extended_channels = 1
+n_standard_channels = 1
+user_identity = "{user_identity}"
+device_id = "sv2-cpu-miner"
+single_submit = false
+cpu_usage_percent = 100
+nominal_hashrate_multiplier = 1.0
+"#
+            ),
+        )
+        .unwrap();
+        path
+    }
+
+    /// The shipped example sets `auth_pk`, so this also proves the string-typed fields
+    /// (`SocketAddr`, `Secp256k1PublicKey`) survive the loader.
+    #[test]
+    fn example_config_loads() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/config.toml");
+        let config = Sv2CpuMinerConfig::from_file(path)
+            .unwrap_or_else(|e| panic!("config.toml must load: {e}"));
+        assert!(config.auth_pk.is_some());
+    }
+
+    #[test]
+    fn rejects_user_identity_over_255_bytes() {
+        let path = write_temp_config("long-user-identity", &"x".repeat(256));
+        let err = Sv2CpuMinerConfig::from_file(&path)
+            .err()
+            .expect("oversized user_identity must be rejected");
+        let _ = std::fs::remove_file(&path);
+        assert!(matches!(
+            err,
+            Sv2CpuMinerError::InvalidConfig(msg) if msg.contains("user_identity")
+        ));
     }
 }

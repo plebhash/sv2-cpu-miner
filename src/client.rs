@@ -93,7 +93,7 @@ impl Sv2CpuMiner {
                 .device_id
                 .clone()
                 .try_into()
-                .expect("device_id must fit in Str0255"),
+                .expect("device_id length checked at config load"),
         };
         let frame: StdFrame = Message::Common(setup_connection.into())
             .try_into()

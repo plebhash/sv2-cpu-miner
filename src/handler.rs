@@ -95,7 +95,7 @@ impl Sv2CpuMinerClientHandler {
                     .user_identity
                     .clone()
                     .try_into()
-                    .expect("user_identity must fit in Str0255"),
+                    .expect("user_identity length checked at config load"),
                 nominal_hash_rate: nominal_hashrate_per_channel,
                 max_target: [0xFF_u8; 32].into(), // allow maximum possible target
             };
@@ -118,7 +118,7 @@ impl Sv2CpuMinerClientHandler {
                     .user_identity
                     .clone()
                     .try_into()
-                    .expect("user_identity must fit in Str0255"),
+                    .expect("user_identity length checked at config load"),
                 nominal_hash_rate: nominal_hashrate_per_channel,
                 max_target: [0xFF_u8; 32].into(), // allow maximum possible target
                 min_extranonce_size: 0, // no extranonce rolling to avoid merkle root calculation overhead
