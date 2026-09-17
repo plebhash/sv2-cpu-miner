@@ -42,6 +42,7 @@ pub struct Sv2CpuMinerClientHandler {
     n_standard_channels: u8,
     single_submit: bool,
     cpu_usage_percent: u64,
+    requires_standard_jobs: bool,
     extended_channels: HashMap<u32, ExtendedMiner>,
     standard_channels: HashMap<u32, StandardMiner>,
     // every channel belongs to a group (spec 5.2.3); a server may run several groups on one
@@ -62,6 +63,7 @@ impl Sv2CpuMinerClientHandler {
         n_standard_channels: u8,
         single_submit: bool,
         cpu_usage_percent: u64,
+        requires_standard_jobs: bool,
         event_injector: async_channel::Sender<StdFrame>,
         cancellation_token: CancellationToken,
     ) -> Self {
@@ -73,6 +75,7 @@ impl Sv2CpuMinerClientHandler {
             n_standard_channels,
             single_submit,
             cpu_usage_percent,
+            requires_standard_jobs,
             extended_channels: HashMap::with_capacity(n_extended_channels as usize),
             standard_channels: HashMap::with_capacity(n_standard_channels as usize),
             group_channels: HashMap::new(),
@@ -622,6 +625,10 @@ impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
     ) -> Result<(), Self::Error> {
         info!("Received NewExtendedMiningJob: {}", new_extended_mining_job);
 
+        if self.requires_standard_jobs {
+            return Err(Sv2CpuMinerError::StandardJobsOnly("NewExtendedMiningJob"));
+        }
+
         let channel_id = new_extended_mining_job.channel_id;
         let job_id = new_extended_mining_job.job_id;
 
@@ -844,6 +851,10 @@ impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
     ) -> Result<(), Self::Error> {
         info!("Received SetGroupChannel: {}", set_group_channel);
 
+        if self.requires_standard_jobs {
+            return Err(Sv2CpuMinerError::StandardJobsOnly("SetGroupChannel"));
+        }
+
         let group_channel_id = set_group_channel.group_channel_id;
         let channel_ids = set_group_channel.channel_ids.into_inner();
 
@@ -899,7 +910,9 @@ mod tests {
     use super::*;
     use stratum_apps::stratum_core::binary_sv2::Sv2OptionOwned;
 
-    fn handler() -> (Sv2CpuMinerClientHandler, async_channel::Receiver<StdFrame>) {
+    fn handler(
+        requires_standard_jobs: bool,
+    ) -> (Sv2CpuMinerClientHandler, async_channel::Receiver<StdFrame>) {
         let (event_injector, receiver) = async_channel::unbounded();
         let handler = Sv2CpuMinerClientHandler::new(
             "user".to_string(),
@@ -909,6 +922,7 @@ mod tests {
             3,
             false,
             100,
+            requires_standard_jobs,
             event_injector,
             CancellationToken::new(),
         );
@@ -960,7 +974,7 @@ mod tests {
     /// Opens standard channels 2 and 3 in group 1 and channel 5 in group 4.
     async fn handler_with_two_groups()
     -> (Sv2CpuMinerClientHandler, async_channel::Receiver<StdFrame>) {
-        let (mut handler, receiver) = handler();
+        let (mut handler, receiver) = handler(false);
         for (channel_id, group_channel_id) in [(2, 1), (3, 1), (5, 4)] {
             handler
                 .handle_open_standard_mining_channel_success(
@@ -1094,5 +1108,22 @@ mod tests {
             handler.group_channels.keys().copied().collect::<Vec<_>>(),
             vec![4]
         );
+    }
+
+    #[tokio::test]
+    async fn extended_job_on_a_standard_jobs_connection_is_fatal() {
+        let (mut handler, _receiver) = handler(true);
+        handler
+            .handle_open_standard_mining_channel_success(None, open_standard_success(2, 1), None)
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            handler
+                .handle_new_extended_mining_job(None, group_job(1, 10), None)
+                .await,
+            Err(Sv2CpuMinerError::StandardJobsOnly("NewExtendedMiningJob"))
+        ));
+        assert!(future_job_ids(&handler, 2).await.is_empty());
     }
 }

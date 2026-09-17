@@ -57,6 +57,7 @@ impl Sv2CpuMiner {
             self.config.n_standard_channels,
             self.config.single_submit,
             self.config.cpu_usage_percent,
+            self.config.requires_standard_jobs,
             sender.clone(),
             self.cancellation_token.clone(),
         );
@@ -118,12 +119,11 @@ impl Sv2CpuMiner {
                     match frame {
                         Ok(mut frame) => {
                             let header = frame.header();
-                            if let Err(e) = handler
+                            // a handler error is a protocol violation by the mining server,
+                            // after which the connection is not worth keeping
+                            handler
                                 .handle_mining_message_frame_from_server(None, header, frame.payload())
-                                .await
-                            {
-                                error!("Failed to handle message from server: {:?}", e);
-                            }
+                                .await?;
                         }
                         Err(_) => {
                             error!("Connection closed by server");

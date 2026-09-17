@@ -31,6 +31,9 @@ pub enum Sv2CpuMinerError {
     UnexpectedMessage(ExtensionType, MessageType),
     /// Server rejected SetupConnection.
     SetupConnectionFailed,
+    /// The mining server sent a message that the connection's REQUIRES_STANDARD_JOBS flag
+    /// forbids; the payload names the message.
+    StandardJobsOnly(&'static str),
 }
 
 impl std::error::Error for Sv2CpuMinerError {}
@@ -51,6 +54,10 @@ impl fmt::Display for Sv2CpuMinerError {
                 "unexpected message: extension_type {extension_type}, message_type {message_type}"
             ),
             SetupConnectionFailed => write!(f, "SetupConnection rejected by server"),
+            StandardJobsOnly(message) => write!(
+                f,
+                "mining server sent {message} on a connection that declared REQUIRES_STANDARD_JOBS"
+            ),
         }
     }
 }
