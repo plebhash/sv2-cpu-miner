@@ -34,7 +34,7 @@ async fn test_mining_client_mixed_channels() {
         nominal_hashrate_multiplier: 1.0,
     };
 
-    let client = Sv2CpuMiner::new(config).await.unwrap();
+    let client = Sv2CpuMiner::new(config).await;
     let mut client_clone = client.clone();
     tokio::spawn(async move {
         client_clone.start().await.unwrap();

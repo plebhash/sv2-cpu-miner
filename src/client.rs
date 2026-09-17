@@ -32,14 +32,14 @@ pub struct Sv2CpuMiner {
 }
 
 impl Sv2CpuMiner {
-    pub async fn new(config: Sv2CpuMinerConfig) -> Result<Self> {
+    pub async fn new(config: Sv2CpuMinerConfig) -> Self {
         let nominal_hashrate = measure_hashrate(config.cpu_usage_percent).await;
 
-        Ok(Self {
+        Self {
             config,
             nominal_hashrate,
             cancellation_token: CancellationToken::new(),
-        })
+        }
     }
 
     pub async fn start(&mut self) -> Result<()> {

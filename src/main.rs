@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
     let config = Sv2CpuMinerConfig::from_file(args.config)?;
 
     // Create and start the client
-    let mut client = Sv2CpuMiner::new(config).await?;
+    let mut client = Sv2CpuMiner::new(config).await;
 
     // Use tokio::select to wait for either client completion or Ctrl+C
     tokio::select! {
