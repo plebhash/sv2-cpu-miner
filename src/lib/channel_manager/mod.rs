@@ -34,7 +34,7 @@ use tokio_util::sync::CancellationToken;
 
 use tracing::{debug, error, info};
 
-pub struct Sv2CpuMinerClientHandler {
+pub struct ChannelManager {
     user_identity: String,
     nominal_hashrate: f32,
     nominal_hashrate_multiplier: f32,
@@ -53,7 +53,7 @@ pub struct Sv2CpuMinerClientHandler {
     cancellation_token: CancellationToken,
 }
 
-impl Sv2CpuMinerClientHandler {
+impl ChannelManager {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         user_identity: String,
@@ -204,7 +204,7 @@ impl Sv2CpuMinerClientHandler {
     }
 }
 
-impl HandleCommonMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
+impl HandleCommonMessagesFromServerOwnedAsync for ChannelManager {
     type Error = Sv2CpuMinerError;
 
     fn get_negotiated_extensions_with_server(
@@ -261,7 +261,7 @@ impl HandleCommonMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
     }
 }
 
-impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
+impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
     type Error = Sv2CpuMinerError;
 
     fn get_channel_type_for_server(&self, _server_id: Option<usize>) -> SupportedChannelTypes {
@@ -912,9 +912,9 @@ mod tests {
 
     fn handler(
         requires_standard_jobs: bool,
-    ) -> (Sv2CpuMinerClientHandler, async_channel::Receiver<StdFrame>) {
+    ) -> (ChannelManager, async_channel::Receiver<StdFrame>) {
         let (event_injector, receiver) = async_channel::unbounded();
-        let handler = Sv2CpuMinerClientHandler::new(
+        let handler = ChannelManager::new(
             "user".to_string(),
             1000.0,
             1.0,
@@ -972,8 +972,7 @@ mod tests {
     }
 
     /// Opens standard channels 2 and 3 in group 1 and channel 5 in group 4.
-    async fn handler_with_two_groups()
-    -> (Sv2CpuMinerClientHandler, async_channel::Receiver<StdFrame>) {
+    async fn handler_with_two_groups() -> (ChannelManager, async_channel::Receiver<StdFrame>) {
         let (mut handler, receiver) = handler(false);
         for (channel_id, group_channel_id) in [(2, 1), (3, 1), (5, 4)] {
             handler
@@ -988,7 +987,7 @@ mod tests {
         (handler, receiver)
     }
 
-    async fn future_job_ids(handler: &Sv2CpuMinerClientHandler, channel_id: u32) -> Vec<u32> {
+    async fn future_job_ids(handler: &ChannelManager, channel_id: u32) -> Vec<u32> {
         let mut job_ids = handler.standard_channels[&channel_id]
             .future_job_ids()
             .await;

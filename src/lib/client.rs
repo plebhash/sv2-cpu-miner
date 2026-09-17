@@ -1,7 +1,7 @@
+use crate::channel_manager::ChannelManager;
 use crate::config::CPU_THROTTLE_WINDOW_MS;
 use crate::config::Sv2CpuMinerConfig;
 use crate::error::Sv2CpuMinerError;
-use crate::handler::Sv2CpuMinerClientHandler;
 use stratum_apps::network_helpers::noise_connection::Connection;
 use stratum_apps::stratum_core::bitcoin::{
     CompactTarget,
@@ -49,7 +49,7 @@ impl Sv2CpuMiner {
             Connection::connect::<StdFrame>(socket, initiator, self.cancellation_token.clone())
                 .await?;
 
-        let mut handler = Sv2CpuMinerClientHandler::new(
+        let mut channel_manager = ChannelManager::new(
             self.config.user_identity.clone(),
             self.nominal_hashrate,
             self.config.nominal_hashrate_multiplier,
@@ -104,11 +104,11 @@ impl Sv2CpuMiner {
 
         let mut incoming = receiver.recv().await?;
         let header = incoming.header();
-        handler
+        channel_manager
             .handle_common_message_frame_from_server(None, header, incoming.payload())
             .await?;
 
-        handler.open_channels().await?;
+        channel_manager.open_channels().await?;
 
         loop {
             tokio::select! {
@@ -121,7 +121,7 @@ impl Sv2CpuMiner {
                             let header = frame.header();
                             // a handler error is a protocol violation by the mining server,
                             // after which the connection is not worth keeping
-                            handler
+                            channel_manager
                                 .handle_mining_message_frame_from_server(None, header, frame.payload())
                                 .await?;
                         }
