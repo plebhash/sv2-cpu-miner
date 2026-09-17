@@ -1,17 +1,10 @@
 use crate::client::{Message, StdFrame, format_number_with_underscores};
 use std::collections::HashMap;
 use stratum_apps::stratum_core::channels_sv2::client::group::GroupChannel;
-use stratum_apps::stratum_core::common_messages_sv2::{
-    ChannelEndpointChangedOwned, MESSAGE_TYPE_CHANNEL_ENDPOINT_CHANGED, MESSAGE_TYPE_RECONNECT,
-    ReconnectOwned, SetupConnectionErrorOwned, SetupConnectionSuccessOwned,
-};
-use stratum_apps::stratum_core::handlers_sv2::{
-    HandleCommonMessagesFromServerOwnedAsync, HandlerErrorType,
-};
 use stratum_apps::stratum_core::mining_sv2::{
     OpenExtendedMiningChannelOwned, OpenStandardMiningChannelOwned,
 };
-use stratum_apps::stratum_core::parsers_sv2::{MiningOwned, Tlv};
+use stratum_apps::stratum_core::parsers_sv2::MiningOwned;
 
 use crate::miner::extended::ExtendedMiner;
 use crate::miner::standard::StandardMiner;
@@ -19,7 +12,7 @@ use crate::miner::standard::StandardMiner;
 use crate::error::Sv2CpuMinerError;
 use tokio_util::sync::CancellationToken;
 
-use tracing::{error, info};
+use tracing::info;
 
 mod mining_message_handler;
 
@@ -126,62 +119,5 @@ impl ChannelManager {
         }
 
         Ok(())
-    }
-}
-
-impl HandleCommonMessagesFromServerOwnedAsync for ChannelManager {
-    type Error = Sv2CpuMinerError;
-
-    fn get_negotiated_extensions_with_server(
-        &self,
-        _server_id: Option<usize>,
-    ) -> Result<Vec<u16>, Self::Error> {
-        Ok(vec![])
-    }
-
-    async fn handle_setup_connection_success(
-        &mut self,
-        _server_id: Option<usize>,
-        msg: SetupConnectionSuccessOwned,
-        _tlv_fields: Option<&[Tlv]>,
-    ) -> Result<(), Self::Error> {
-        info!("Received SetupConnection.Success: {}", msg);
-        Ok(())
-    }
-
-    async fn handle_setup_connection_error(
-        &mut self,
-        _server_id: Option<usize>,
-        msg: SetupConnectionErrorOwned,
-        _tlv_fields: Option<&[Tlv]>,
-    ) -> Result<(), Self::Error> {
-        error!("Received SetupConnection.Error: {}", msg);
-        Err(Sv2CpuMinerError::SetupConnectionFailed)
-    }
-
-    async fn handle_channel_endpoint_changed(
-        &mut self,
-        _server_id: Option<usize>,
-        _msg: ChannelEndpointChangedOwned,
-        _tlv_fields: Option<&[Tlv]>,
-    ) -> Result<(), Self::Error> {
-        error!("Received unexpected ChannelEndpointChanged");
-        Err(Sv2CpuMinerError::unexpected_message(
-            0,
-            MESSAGE_TYPE_CHANNEL_ENDPOINT_CHANGED,
-        ))
-    }
-
-    async fn handle_reconnect(
-        &mut self,
-        _server_id: Option<usize>,
-        _msg: ReconnectOwned,
-        _tlv_fields: Option<&[Tlv]>,
-    ) -> Result<(), Self::Error> {
-        error!("Received unexpected Reconnect");
-        Err(Sv2CpuMinerError::unexpected_message(
-            0,
-            MESSAGE_TYPE_RECONNECT,
-        ))
     }
 }

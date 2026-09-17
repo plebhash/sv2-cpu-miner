@@ -21,6 +21,8 @@ use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
+mod common_message_handler;
+
 pub type Message = AnyMessageOwned;
 pub type StdFrame = MessageFrame<Message>;
 
@@ -48,19 +50,6 @@ impl Sv2CpuMiner {
         let (receiver, sender) =
             Connection::connect::<StdFrame>(socket, initiator, self.cancellation_token.clone())
                 .await?;
-
-        let mut channel_manager = ChannelManager::new(
-            self.config.user_identity.clone(),
-            self.nominal_hashrate,
-            self.config.nominal_hashrate_multiplier,
-            self.config.n_extended_channels,
-            self.config.n_standard_channels,
-            self.config.single_submit,
-            self.config.cpu_usage_percent,
-            self.config.requires_standard_jobs,
-            sender.clone(),
-            self.cancellation_token.clone(),
-        );
 
         // REQUIRES_STANDARD_JOBS declares that this client cannot process extended jobs
         // (SetupConnection flags table of the Mining Protocol spec). This miner can, so the
@@ -104,9 +93,21 @@ impl Sv2CpuMiner {
 
         let mut incoming = receiver.recv().await?;
         let header = incoming.header();
-        channel_manager
-            .handle_common_message_frame_from_server(None, header, incoming.payload())
+        self.handle_common_message_frame_from_server(None, header, incoming.payload())
             .await?;
+
+        let mut channel_manager = ChannelManager::new(
+            self.config.user_identity.clone(),
+            self.nominal_hashrate,
+            self.config.nominal_hashrate_multiplier,
+            self.config.n_extended_channels,
+            self.config.n_standard_channels,
+            self.config.single_submit,
+            self.config.cpu_usage_percent,
+            self.config.requires_standard_jobs,
+            sender.clone(),
+            self.cancellation_token.clone(),
+        );
 
         channel_manager.open_channels().await?;
 
