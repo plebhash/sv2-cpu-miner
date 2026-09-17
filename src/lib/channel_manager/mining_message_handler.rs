@@ -163,7 +163,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                 standard_channel,
                 self.cpu_usage_percent,
                 self.single_submit,
-                self.event_injector.clone(),
+                self.upstream_sender.clone(),
                 self.cancellation_token.clone(),
             ),
         );
@@ -231,7 +231,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                 extended_channel,
                 self.cpu_usage_percent,
                 self.single_submit,
-                self.event_injector.clone(),
+                self.upstream_sender.clone(),
                 self.cancellation_token.clone(),
             ),
         );
@@ -742,7 +742,7 @@ mod tests {
     fn handler(
         requires_standard_jobs: bool,
     ) -> (ChannelManager, async_channel::Receiver<StdFrame>) {
-        let (event_injector, receiver) = async_channel::unbounded();
+        let (upstream_sender, receiver) = async_channel::unbounded();
         let handler = ChannelManager::new(
             "user".to_string(),
             1000.0,
@@ -752,7 +752,7 @@ mod tests {
             false,
             100,
             requires_standard_jobs,
-            event_injector,
+            upstream_sender,
             CancellationToken::new(),
         );
         (handler, receiver)

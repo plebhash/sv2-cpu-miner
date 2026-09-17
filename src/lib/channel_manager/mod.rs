@@ -31,7 +31,7 @@ pub struct ChannelManager {
     // connection and redefine them with SetGroupChannel, so membership is tracked per group id
     // and server messages addressed to a group id fan out to that group's members only
     group_channels: HashMap<u32, GroupChannel>,
-    event_injector: async_channel::Sender<StdFrame>,
+    upstream_sender: async_channel::Sender<StdFrame>,
     cancellation_token: CancellationToken,
 }
 
@@ -46,7 +46,7 @@ impl ChannelManager {
         single_submit: bool,
         cpu_usage_percent: u64,
         requires_standard_jobs: bool,
-        event_injector: async_channel::Sender<StdFrame>,
+        upstream_sender: async_channel::Sender<StdFrame>,
         cancellation_token: CancellationToken,
     ) -> Self {
         Self {
@@ -61,7 +61,7 @@ impl ChannelManager {
             extended_channels: HashMap::with_capacity(n_extended_channels as usize),
             standard_channels: HashMap::with_capacity(n_standard_channels as usize),
             group_channels: HashMap::new(),
-            event_injector,
+            upstream_sender,
             cancellation_token,
         }
     }
@@ -91,7 +91,7 @@ impl ChannelManager {
             ))
             .try_into()
             .expect("OpenStandardMiningChannel must be serializable");
-            self.event_injector.send(frame).await?;
+            self.upstream_sender.send(frame).await?;
         }
 
         for i in 0..self.n_extended_channels {
@@ -115,7 +115,7 @@ impl ChannelManager {
             ))
             .try_into()
             .expect("OpenExtendedMiningChannel must be serializable");
-            self.event_injector.send(frame).await?;
+            self.upstream_sender.send(frame).await?;
         }
 
         Ok(())

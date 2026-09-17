@@ -47,7 +47,7 @@ impl Sv2CpuMiner {
     pub async fn start(&mut self) -> Result<(), Sv2CpuMinerError> {
         let socket = TcpStream::connect(self.config.server_addr).await?;
         let initiator = Initiator::new(self.config.auth_pk.as_ref().map(|k| k.0));
-        let (receiver, sender) =
+        let (upstream_receiver, upstream_sender) =
             Connection::connect::<StdFrame>(socket, initiator, self.cancellation_token.clone())
                 .await?;
 
@@ -89,9 +89,9 @@ impl Sv2CpuMiner {
         let frame: StdFrame = Message::Common(setup_connection.into())
             .try_into()
             .expect("SetupConnection must be serializable");
-        sender.send(frame).await?;
+        upstream_sender.send(frame).await?;
 
-        let mut incoming = receiver.recv().await?;
+        let mut incoming = upstream_receiver.recv().await?;
         let header = incoming.header();
         self.handle_common_message_frame_from_server(None, header, incoming.payload())
             .await?;
@@ -105,7 +105,7 @@ impl Sv2CpuMiner {
             self.config.single_submit,
             self.config.cpu_usage_percent,
             self.config.requires_standard_jobs,
-            sender.clone(),
+            upstream_sender.clone(),
             self.cancellation_token.clone(),
         );
 
@@ -116,7 +116,7 @@ impl Sv2CpuMiner {
                 _ = self.cancellation_token.cancelled() => {
                     return Ok(());
                 }
-                frame = receiver.recv() => {
+                frame = upstream_receiver.recv() => {
                     match frame {
                         Ok(mut frame) => {
                             let header = frame.header();

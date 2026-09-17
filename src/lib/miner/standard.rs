@@ -23,7 +23,7 @@ use tracing::{debug, error, info};
 
 pub struct StandardMiner {
     standard_channel: Arc<RwLock<StandardChannel>>,
-    request_injector: async_channel::Sender<StdFrame>,
+    upstream_sender: async_channel::Sender<StdFrame>,
     global_cancellation_token: CancellationToken,
     miner_cancellation_token: CancellationToken,
     single_submit_cancellation_token: Option<CancellationToken>,
@@ -35,7 +35,7 @@ impl StandardMiner {
         standard_channel: StandardChannel,
         cpu_usage_percent: u64,
         single_submit: bool,
-        request_injector: async_channel::Sender<StdFrame>,
+        upstream_sender: async_channel::Sender<StdFrame>,
         global_cancellation_token: CancellationToken,
     ) -> Self {
         let miner_cancellation_token = CancellationToken::new();
@@ -46,7 +46,7 @@ impl StandardMiner {
         };
         Self {
             standard_channel: Arc::new(RwLock::new(standard_channel)),
-            request_injector,
+            upstream_sender,
             global_cancellation_token,
             miner_cancellation_token,
             single_submit_cancellation_token,
@@ -94,7 +94,7 @@ impl StandardMiner {
         self.miner_cancellation_token = CancellationToken::new();
 
         // Extract needed values from self before spawning
-        let request_injector = self.request_injector.clone();
+        let upstream_sender = self.upstream_sender.clone();
         let global_cancellation_token = self.global_cancellation_token.clone();
         let miner_cancellation_token = self.miner_cancellation_token.clone();
         let standard_channel = self.standard_channel.clone();
@@ -104,7 +104,7 @@ impl StandardMiner {
         tokio::spawn(async move {
             mine_job(
                 standard_channel,
-                request_injector,
+                upstream_sender,
                 global_cancellation_token,
                 miner_cancellation_token,
                 single_submit_cancellation_token,
@@ -173,7 +173,7 @@ impl StandardMiner {
 
 async fn mine_job(
     standard_channel: Arc<RwLock<StandardChannel>>,
-    request_injector: async_channel::Sender<StdFrame>,
+    upstream_sender: async_channel::Sender<StdFrame>,
     global_cancellation_token: CancellationToken,
     miner_cancellation_token: CancellationToken,
     single_submit_cancellation_token: Option<CancellationToken>,
@@ -282,7 +282,7 @@ async fn mine_job(
                         .try_into()
                         .expect("SubmitSharesStandard must be serializable");
 
-                    match request_injector.send(frame).await {
+                    match upstream_sender.send(frame).await {
                         Ok(_) => {
                             info!("Submitting share: {}", share);
                             if let Some(ref single_submit_cancellation_token) = single_submit_cancellation_token {

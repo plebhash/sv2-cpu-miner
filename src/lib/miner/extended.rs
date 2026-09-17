@@ -24,7 +24,7 @@ use tracing::{debug, error, info};
 
 pub struct ExtendedMiner {
     extended_channel: Arc<RwLock<ExtendedChannel>>,
-    event_injector: async_channel::Sender<StdFrame>,
+    upstream_sender: async_channel::Sender<StdFrame>,
     global_cancellation_token: CancellationToken,
     miner_cancellation_token: CancellationToken,
     single_submit_cancellation_token: Option<CancellationToken>,
@@ -36,7 +36,7 @@ impl ExtendedMiner {
         extended_channel: ExtendedChannel,
         cpu_usage_percent: u64,
         single_submit: bool,
-        event_injector: async_channel::Sender<StdFrame>,
+        upstream_sender: async_channel::Sender<StdFrame>,
         global_cancellation_token: CancellationToken,
     ) -> Self {
         let miner_cancellation_token = CancellationToken::new();
@@ -47,7 +47,7 @@ impl ExtendedMiner {
         };
         Self {
             extended_channel: Arc::new(RwLock::new(extended_channel)),
-            event_injector,
+            upstream_sender,
             global_cancellation_token,
             miner_cancellation_token,
             single_submit_cancellation_token,
@@ -91,7 +91,7 @@ impl ExtendedMiner {
             }
             self.miner_cancellation_token = CancellationToken::new();
 
-            let request_injector = self.event_injector.clone();
+            let upstream_sender = self.upstream_sender.clone();
             let global_cancellation_token = self.global_cancellation_token.clone();
             let miner_cancellation_token = self.miner_cancellation_token.clone();
             let extended_channel = self.extended_channel.clone();
@@ -101,7 +101,7 @@ impl ExtendedMiner {
             tokio::spawn(async move {
                 mine_job(
                     extended_channel,
-                    request_injector,
+                    upstream_sender,
                     global_cancellation_token,
                     miner_cancellation_token,
                     single_submit_cancellation_token,
@@ -129,7 +129,7 @@ impl ExtendedMiner {
         self.miner_cancellation_token = CancellationToken::new();
 
         // Extract needed values from self before spawning
-        let request_injector = self.event_injector.clone();
+        let upstream_sender = self.upstream_sender.clone();
         let global_cancellation_token = self.global_cancellation_token.clone();
         let miner_cancellation_token = self.miner_cancellation_token.clone();
         let extended_channel = self.extended_channel.clone();
@@ -139,7 +139,7 @@ impl ExtendedMiner {
         tokio::spawn(async move {
             mine_job(
                 extended_channel,
-                request_injector,
+                upstream_sender,
                 global_cancellation_token,
                 miner_cancellation_token,
                 single_submit_cancellation_token,
@@ -160,7 +160,7 @@ impl ExtendedMiner {
 
 async fn mine_job(
     extended_channel: Arc<RwLock<ExtendedChannel>>,
-    event_injector: async_channel::Sender<StdFrame>,
+    upstream_sender: async_channel::Sender<StdFrame>,
     global_cancellation_token: CancellationToken,
     miner_cancellation_token: CancellationToken,
     single_submit_cancellation_token: Option<CancellationToken>,
@@ -284,7 +284,7 @@ async fn mine_job(
                         .try_into()
                         .expect("SubmitSharesExtended must be serializable");
 
-                    match event_injector.send(frame).await {
+                    match upstream_sender.send(frame).await {
                         Ok(_) => {
                             info!("Submitting share: {}", share);
                             if let Some(ref single_submit_cancellation_token) = single_submit_cancellation_token {
