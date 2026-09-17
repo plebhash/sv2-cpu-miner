@@ -1,10 +1,11 @@
-use crate::client::{Message, StdFrame, format_number_with_underscores};
+use crate::client::format_number_with_underscores;
 use std::collections::HashMap;
 use stratum_apps::stratum_core::channels_sv2::client::group::GroupChannel;
 use stratum_apps::stratum_core::mining_sv2::{
     OpenExtendedMiningChannelOwned, OpenStandardMiningChannelOwned,
 };
 use stratum_apps::stratum_core::parsers_sv2::MiningOwned;
+use stratum_apps::utils::types::{Message, OutboundFrame};
 
 use crate::miner::extended::ExtendedMiner;
 use crate::miner::standard::StandardMiner;
@@ -31,7 +32,7 @@ pub struct ChannelManager {
     // connection and redefine them with SetGroupChannel, so membership is tracked per group id
     // and server messages addressed to a group id fan out to that group's members only
     group_channels: HashMap<u32, GroupChannel>,
-    upstream_sender: async_channel::Sender<StdFrame>,
+    upstream_sender: async_channel::Sender<OutboundFrame>,
     cancellation_token: CancellationToken,
 }
 
@@ -46,7 +47,7 @@ impl ChannelManager {
         single_submit: bool,
         cpu_usage_percent: u64,
         requires_standard_jobs: bool,
-        upstream_sender: async_channel::Sender<StdFrame>,
+        upstream_sender: async_channel::Sender<OutboundFrame>,
         cancellation_token: CancellationToken,
     ) -> Self {
         Self {
@@ -86,11 +87,9 @@ impl ChannelManager {
                 nominal_hash_rate: nominal_hashrate_per_channel,
                 max_target: [0xFF_u8; 32].into(), // allow maximum possible target
             };
-            let frame: StdFrame = Message::Mining(MiningOwned::OpenStandardMiningChannel(
-                open_standard_mining_channel,
-            ))
-            .try_into()
-            .expect("OpenStandardMiningChannel must be serializable");
+            let frame = OutboundFrame::from_message(Message::Mining(
+                MiningOwned::OpenStandardMiningChannel(open_standard_mining_channel),
+            ))?;
             self.upstream_sender.send(frame).await?;
         }
 
@@ -110,11 +109,9 @@ impl ChannelManager {
                 max_target: [0xFF_u8; 32].into(), // allow maximum possible target
                 min_extranonce_size: 0, // no extranonce rolling to avoid merkle root calculation overhead
             };
-            let frame: StdFrame = Message::Mining(MiningOwned::OpenExtendedMiningChannel(
-                open_extended_mining_channel,
-            ))
-            .try_into()
-            .expect("OpenExtendedMiningChannel must be serializable");
+            let frame = OutboundFrame::from_message(Message::Mining(
+                MiningOwned::OpenExtendedMiningChannel(open_extended_mining_channel),
+            ))?;
             self.upstream_sender.send(frame).await?;
         }
 

@@ -9,22 +9,18 @@ use stratum_apps::stratum_core::bitcoin::{
     hashes::sha256d::Hash,
 };
 use stratum_apps::stratum_core::channels_sv2::target::u256_to_block_hash;
-use stratum_apps::stratum_core::codec_sv2::MessageFrame;
 use stratum_apps::stratum_core::common_messages_sv2::{Protocol, SetupConnectionOwned};
 use stratum_apps::stratum_core::handlers_sv2::{
     HandleCommonMessagesFromServerOwnedAsync, HandleMiningMessagesFromServerOwnedAsync,
 };
 use stratum_apps::stratum_core::noise_sv2::Initiator;
-use stratum_apps::stratum_core::parsers_sv2::AnyMessageOwned;
+use stratum_apps::utils::types::{Message, OutboundFrame};
 use tokio::net::TcpStream;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
 mod common_message_handler;
-
-pub type Message = AnyMessageOwned;
-pub type StdFrame = MessageFrame<Message>;
 
 #[derive(Clone)]
 pub struct Sv2CpuMiner {
@@ -47,9 +43,12 @@ impl Sv2CpuMiner {
     pub async fn start(&mut self) -> Result<(), Sv2CpuMinerError> {
         let socket = TcpStream::connect(self.config.server_addr).await?;
         let initiator = Initiator::new(self.config.auth_pk.as_ref().map(|k| k.0));
-        let (upstream_receiver, upstream_sender) =
-            Connection::connect::<StdFrame>(socket, initiator, self.cancellation_token.clone())
-                .await?;
+        let (upstream_receiver, upstream_sender) = Connection::connect::<OutboundFrame>(
+            socket,
+            initiator,
+            self.cancellation_token.clone(),
+        )
+        .await?;
 
         // REQUIRES_STANDARD_JOBS declares that this client cannot process extended jobs
         // (SetupConnection flags table of the Mining Protocol spec). This miner can, so the
@@ -86,9 +85,7 @@ impl Sv2CpuMiner {
                 .try_into()
                 .expect("device_id length checked at config load"),
         };
-        let frame: StdFrame = Message::Common(setup_connection.into())
-            .try_into()
-            .expect("SetupConnection must be serializable");
+        let frame = OutboundFrame::from_message(Message::Common(setup_connection.into()))?;
         upstream_sender.send(frame).await?;
 
         let mut incoming = upstream_receiver.recv().await?;

@@ -1,4 +1,4 @@
-use crate::client::{Message, StdFrame};
+use crate::error::Sv2CpuMinerError;
 use stratum_apps::stratum_core::bitcoin::{
     CompactTarget, Target,
     blockdata::block::{Header, Version},
@@ -12,6 +12,7 @@ use stratum_apps::stratum_core::mining_sv2::{
     NewExtendedMiningJobOwned, NewMiningJobOwned, SetNewPrevHashOwned, SubmitSharesStandardOwned,
 };
 use stratum_apps::stratum_core::parsers_sv2::MiningOwned;
+use stratum_apps::utils::types::{Message, OutboundFrame};
 
 use crate::config::CPU_THROTTLE_WINDOW_MS;
 
@@ -23,7 +24,7 @@ use tracing::{debug, error, info};
 
 pub struct StandardMiner {
     standard_channel: Arc<RwLock<StandardChannel>>,
-    upstream_sender: async_channel::Sender<StdFrame>,
+    upstream_sender: async_channel::Sender<OutboundFrame>,
     global_cancellation_token: CancellationToken,
     miner_cancellation_token: CancellationToken,
     single_submit_cancellation_token: Option<CancellationToken>,
@@ -35,7 +36,7 @@ impl StandardMiner {
         standard_channel: StandardChannel,
         cpu_usage_percent: u64,
         single_submit: bool,
-        upstream_sender: async_channel::Sender<StdFrame>,
+        upstream_sender: async_channel::Sender<OutboundFrame>,
         global_cancellation_token: CancellationToken,
     ) -> Self {
         let miner_cancellation_token = CancellationToken::new();
@@ -173,7 +174,7 @@ impl StandardMiner {
 
 async fn mine_job(
     standard_channel: Arc<RwLock<StandardChannel>>,
-    upstream_sender: async_channel::Sender<StdFrame>,
+    upstream_sender: async_channel::Sender<OutboundFrame>,
     global_cancellation_token: CancellationToken,
     miner_cancellation_token: CancellationToken,
     single_submit_cancellation_token: Option<CancellationToken>,
@@ -278,12 +279,16 @@ async fn mine_job(
                     let _ = standard_channel_guard.validate_share(share.clone());
                     drop(standard_channel_guard);
 
-                    let frame: StdFrame = Message::Mining(MiningOwned::SubmitSharesStandard(share.clone()))
-                        .try_into()
-                        .expect("SubmitSharesStandard must be serializable");
+                    let submit = async {
+                        let frame = OutboundFrame::from_message(Message::Mining(
+                            MiningOwned::SubmitSharesStandard(share.clone()),
+                        ))?;
+                        upstream_sender.send(frame).await?;
+                        Ok::<(), Sv2CpuMinerError>(())
+                    };
 
-                    match upstream_sender.send(frame).await {
-                        Ok(_) => {
+                    match submit.await {
+                        Ok(()) => {
                             info!("Submitting share: {}", share);
                             if let Some(ref single_submit_cancellation_token) = single_submit_cancellation_token {
                                 info!("Single submit enabled, cancelling miner task");
@@ -291,7 +296,7 @@ async fn mine_job(
                             }
                         }
                         Err(e) => {
-                            error!("Failed to send share: {}", e);
+                            error!("Failed to submit share: {}", e);
                         }
                     }
                 }

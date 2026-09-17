@@ -735,13 +735,13 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::StdFrame;
     use stratum_apps::stratum_core::binary_sv2::Sv2OptionOwned;
+    use stratum_apps::utils::types::OutboundFrame;
     use tokio_util::sync::CancellationToken;
 
     fn handler(
         requires_standard_jobs: bool,
-    ) -> (ChannelManager, async_channel::Receiver<StdFrame>) {
+    ) -> (ChannelManager, async_channel::Receiver<OutboundFrame>) {
         let (upstream_sender, receiver) = async_channel::unbounded();
         let handler = ChannelManager::new(
             "user".to_string(),
@@ -801,7 +801,7 @@ mod tests {
     }
 
     /// Opens standard channels 2 and 3 in group 1 and channel 5 in group 4.
-    async fn handler_with_two_groups() -> (ChannelManager, async_channel::Receiver<StdFrame>) {
+    async fn handler_with_two_groups() -> (ChannelManager, async_channel::Receiver<OutboundFrame>) {
         let (mut handler, receiver) = handler(false);
         for (channel_id, group_channel_id) in [(2, 1), (3, 1), (5, 4)] {
             handler

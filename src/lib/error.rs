@@ -92,6 +92,12 @@ impl From<async_channel::RecvError> for Sv2CpuMinerError {
     }
 }
 
+impl From<ParserError> for Sv2CpuMinerError {
+    fn from(e: ParserError) -> Self {
+        Self::Parser(e)
+    }
+}
+
 impl HandlerErrorType for Sv2CpuMinerError {
     fn unexpected_message(extension_type: ExtensionType, message_type: MessageType) -> Self {
         Self::UnexpectedMessage(extension_type, message_type)
