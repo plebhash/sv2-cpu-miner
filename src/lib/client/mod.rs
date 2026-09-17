@@ -14,7 +14,9 @@ use stratum_apps::stratum_core::handlers_sv2::{
     HandleCommonMessagesFromServerOwnedAsync, HandleMiningMessagesFromServerOwnedAsync,
 };
 use stratum_apps::stratum_core::noise_sv2::Initiator;
-use stratum_apps::utils::types::{Message, OutboundFrame};
+use stratum_apps::utils::types::{
+    InboundFrame, Message, OutboundFrame, SUPPORTED_PROTOCOL_VERSION,
+};
 use tokio::net::TcpStream;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -50,47 +52,7 @@ impl Sv2CpuMiner {
         )
         .await?;
 
-        // REQUIRES_STANDARD_JOBS declares that this client cannot process extended jobs
-        // (SetupConnection flags table of the Mining Protocol spec). This miner can, so the
-        // flag is a user choice for exercising a mining server's per-channel NewMiningJob
-        // path; validate() refuses it together with extended channels, which only ever carry
-        // extended jobs.
-        let flags = if self.config.requires_standard_jobs {
-            // REQUIRES_STANDARD_JOBS, !REQUIRES_WORK_SELECTION, !REQUIRES_VERSION_ROLLING
-            0b001_u32
-        } else {
-            0b000_u32
-        };
-
-        let setup_connection = SetupConnectionOwned {
-            protocol: Protocol::MiningProtocol,
-            min_version: 2,
-            max_version: 2,
-            flags,
-            endpoint_host: self
-                .config
-                .server_addr
-                .ip()
-                .to_string()
-                .try_into()
-                .expect("host must fit in Str0255"),
-            endpoint_port: self.config.server_addr.port(),
-            vendor: "".try_into().expect("empty string is valid Str0255"),
-            hardware_version: "".try_into().expect("empty string is valid Str0255"),
-            firmware: "".try_into().expect("empty string is valid Str0255"),
-            device_id: self
-                .config
-                .device_id
-                .clone()
-                .try_into()
-                .expect("device_id length checked at config load"),
-        };
-        let frame = OutboundFrame::from_message(Message::Common(setup_connection.into()))?;
-        upstream_sender.send(frame).await?;
-
-        let mut incoming = upstream_receiver.recv().await?;
-        let header = incoming.header();
-        self.handle_common_message_frame_from_server(None, header, incoming.payload())
+        self.perform_setup_connection_handshake(&upstream_sender, &upstream_receiver)
             .await?;
 
         let mut channel_manager = ChannelManager::new(
@@ -132,6 +94,58 @@ impl Sv2CpuMiner {
                 }
             }
         }
+    }
+
+    /// Runs the SetupConnection handshake: offers this miner's parameters to the mining server
+    /// and hands the reply to the common message handler, which decides whether the connection
+    /// can be used.
+    async fn perform_setup_connection_handshake(
+        &mut self,
+        upstream_sender: &async_channel::Sender<OutboundFrame>,
+        upstream_receiver: &async_channel::Receiver<InboundFrame>,
+    ) -> Result<(), Sv2CpuMinerError> {
+        // REQUIRES_STANDARD_JOBS declares that this client cannot process extended jobs
+        // (SetupConnection flags table of the Mining Protocol spec). This miner can, so the
+        // flag is a user choice for exercising a mining server's per-channel NewMiningJob
+        // path; validate() refuses it together with extended channels, which only ever carry
+        // extended jobs.
+        let flags = if self.config.requires_standard_jobs {
+            // REQUIRES_STANDARD_JOBS, !REQUIRES_WORK_SELECTION, !REQUIRES_VERSION_ROLLING
+            0b001_u32
+        } else {
+            0b000_u32
+        };
+
+        let setup_connection = SetupConnectionOwned {
+            protocol: Protocol::MiningProtocol,
+            min_version: SUPPORTED_PROTOCOL_VERSION,
+            max_version: SUPPORTED_PROTOCOL_VERSION,
+            flags,
+            endpoint_host: self
+                .config
+                .server_addr
+                .ip()
+                .to_string()
+                .try_into()
+                .expect("host must fit in Str0255"),
+            endpoint_port: self.config.server_addr.port(),
+            vendor: "".try_into().expect("empty string is valid Str0255"),
+            hardware_version: "".try_into().expect("empty string is valid Str0255"),
+            firmware: "".try_into().expect("empty string is valid Str0255"),
+            device_id: self
+                .config
+                .device_id
+                .clone()
+                .try_into()
+                .expect("device_id length checked at config load"),
+        };
+        let frame = OutboundFrame::from_message(Message::Common(setup_connection.into()))?;
+        upstream_sender.send(frame).await?;
+
+        let mut incoming = upstream_receiver.recv().await?;
+        let header = incoming.header();
+        self.handle_common_message_frame_from_server(None, header, incoming.payload())
+            .await
     }
 
     pub async fn shutdown(&mut self) {
