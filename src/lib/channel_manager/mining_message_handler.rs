@@ -1,3 +1,7 @@
+//! Mining messages from the server, routed by the id they carry: a group id reaches every
+//! member of that group, a channel id reaches that channel alone. An error returned here ends
+//! the connection; a problem with a single channel is logged and that channel skipped.
+
 use super::ChannelManager;
 use crate::error::Sv2CpuMinerError;
 use crate::miner::extended::ExtendedChannelMiner;

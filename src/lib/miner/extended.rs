@@ -1,3 +1,7 @@
+//! Mining on an extended channel. Jobs arrive as `NewExtendedMiningJob`, addressed to the
+//! channel or to its group. The extranonce is kept at zero and the merkle root computed once
+//! per job, so only nonce and ntime are rolled.
+
 use crate::error::Sv2CpuMinerError;
 use stratum_apps::stratum_core::bitcoin::{
     CompactTarget, Target,
@@ -22,6 +26,8 @@ use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info};
 
+/// An extended channel and the task hashing on its active job. A new active job or prev hash
+/// replaces the task.
 pub struct ExtendedChannelMiner {
     extended_channel: SharedRw<ExtendedChannel>,
     upstream_sender: async_channel::Sender<OutboundFrame>,
@@ -72,6 +78,8 @@ impl ExtendedChannelMiner {
         Ok(())
     }
 
+    /// Stores the job. If it is already active, that is, it carries a `min_ntime`, mining
+    /// restarts on it at once.
     pub fn on_new_extended_mining_job(
         &mut self,
         new_extended_mining_job: NewExtendedMiningJobOwned,
@@ -112,6 +120,7 @@ impl ExtendedChannelMiner {
         Ok(())
     }
 
+    /// Activates the referenced future job and restarts mining on the new chain tip.
     pub fn on_set_new_prev_hash(
         &mut self,
         set_new_prev_hash: SetNewPrevHashOwned,
@@ -156,6 +165,8 @@ impl ExtendedChannelMiner {
     }
 }
 
+/// Hashes the channel's active job, rolling nonce and ntime, until cancelled. Works for
+/// `cpu_usage_percent` of every throttle window and sleeps for the rest.
 async fn mine_job(
     extended_channel: SharedRw<ExtendedChannel>,
     upstream_sender: async_channel::Sender<OutboundFrame>,

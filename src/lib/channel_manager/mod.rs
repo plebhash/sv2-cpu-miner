@@ -1,3 +1,8 @@
+//! Channel and group state for one connection, and the handling of every mining message.
+//!
+//! Every channel belongs to a group (sv2-spec 5.2.3). A message addressed to a group id fans
+//! out to that group's members; one addressed to a channel id reaches that channel alone.
+
 use crate::miner::format_number_with_underscores;
 use std::collections::HashMap;
 use stratum_apps::stratum_core::channels_sv2::client::group::GroupChannel;
@@ -17,6 +22,7 @@ use tracing::info;
 
 mod mining_message_handler;
 
+/// Owns the open channels, their group membership and the mining task behind each channel.
 pub struct ChannelManager {
     user_identity: String,
     nominal_hashrate: f32,
@@ -67,6 +73,9 @@ impl ChannelManager {
         }
     }
 
+    /// Requests the configured standard and extended channels, splitting the advertised
+    /// hashrate evenly between them. A channel exists once the mining server answers with
+    /// `OpenMiningChannel.Success`.
     pub async fn open_channels(&mut self) -> Result<(), Sv2CpuMinerError> {
         let nominal_hashrate_per_channel = (self.nominal_hashrate
             * self.nominal_hashrate_multiplier)

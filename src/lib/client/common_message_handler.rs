@@ -1,3 +1,6 @@
+//! Common-protocol messages from the mining server. Only the `SetupConnection` reply is
+//! expected; it is validated here, and anything else is a protocol violation.
+
 use super::Sv2CpuMiner;
 use crate::error::Sv2CpuMinerError;
 use stratum_apps::stratum_core::common_messages_sv2::{

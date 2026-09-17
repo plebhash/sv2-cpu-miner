@@ -1,3 +1,6 @@
+//! The `sv2-cpu-miner` binary: loads the configuration, runs one `Sv2CpuMiner` and turns
+//! its outcome into the exit status.
+
 mod args;
 
 use std::process::ExitCode;

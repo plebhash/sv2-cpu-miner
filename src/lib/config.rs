@@ -1,3 +1,6 @@
+//! Runtime configuration. The binary loads it from TOML with `CPU_MINER__*` environment
+//! overrides; library users build it directly. The example `config.toml` documents each field.
+
 use crate::error::Sv2CpuMinerError;
 use serde::Deserialize;
 use std::net::SocketAddr;
@@ -5,6 +8,7 @@ use std::path::PathBuf;
 use stratum_apps::config_helpers::opt_path_from_toml;
 use stratum_apps::key_utils::Secp256k1PublicKey;
 
+/// One run's configuration; see the example `config.toml` for the meaning of each field.
 #[derive(Clone, Deserialize)]
 pub struct Sv2CpuMinerConfig {
     pub server_addr: SocketAddr,

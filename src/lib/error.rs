@@ -11,6 +11,7 @@ use stratum_apps::stratum_core::handlers_sv2::HandlerErrorType;
 use stratum_apps::stratum_core::parsers_sv2::ParserError;
 use stratum_apps::utils::types::{ExtensionType, MessageType};
 
+/// Every way a run can fail.
 #[derive(Debug)]
 pub enum Sv2CpuMinerError {
     /// Errors on bad `TcpStream` connection.

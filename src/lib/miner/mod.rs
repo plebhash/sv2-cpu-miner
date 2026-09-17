@@ -1,3 +1,7 @@
+//! Hashing. Each channel gets a [`standard::StandardChannelMiner`] or an
+//! [`extended::ExtendedChannelMiner`] that hashes the channel's active job in its own task and
+//! submits shares. The throttle window and the start-up hashrate measurement live here too.
+
 pub mod extended;
 pub mod standard;
 

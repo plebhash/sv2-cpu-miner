@@ -1,3 +1,6 @@
+//! The connection to the mining server: TCP plus Noise, the `SetupConnection` handshake, and
+//! the loop that hands every incoming frame to the [`ChannelManager`].
+
 use crate::channel_manager::ChannelManager;
 use crate::config::Sv2CpuMinerConfig;
 use crate::error::Sv2CpuMinerError;
@@ -21,6 +24,8 @@ use tracing::{error, info};
 
 mod common_message_handler;
 
+/// One connection to one mining server. Clones share the cancellation token, so a clone can
+/// [`shutdown`](Self::shutdown) a running [`start`](Self::start).
 #[derive(Clone)]
 pub struct Sv2CpuMiner {
     config: Sv2CpuMinerConfig,
@@ -29,6 +34,8 @@ pub struct Sv2CpuMiner {
 }
 
 impl Sv2CpuMiner {
+    /// Measures this CPU's hashrate for one second at the configured CPU usage. That figure,
+    /// scaled by `nominal_hashrate_multiplier`, is what the channels advertise.
     pub async fn new(config: Sv2CpuMinerConfig) -> Self {
         let nominal_hashrate = measure_hashrate(config.cpu_usage_percent).await;
 
@@ -39,6 +46,10 @@ impl Sv2CpuMiner {
         }
     }
 
+    /// Connects, completes the handshake, opens the configured channels and handles frames
+    /// until the mining server closes the connection or [`shutdown`](Self::shutdown) is called,
+    /// both of which return `Ok`. Returns an error when connecting or the handshake fails, or
+    /// when the mining server violates the protocol.
     pub async fn start(&mut self) -> Result<(), Sv2CpuMinerError> {
         let socket = TcpStream::connect(self.config.server_addr).await?;
         let initiator = Initiator::new(self.config.auth_pk.as_ref().map(|k| k.0));
@@ -157,6 +168,7 @@ impl Sv2CpuMiner {
             .await
     }
 
+    /// Cancels the connection and every mining task, making [`start`](Self::start) return.
     pub async fn shutdown(&mut self) {
         info!("Shutting down Mining Client");
         self.cancellation_token.cancel();
