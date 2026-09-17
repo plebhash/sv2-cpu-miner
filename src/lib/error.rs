@@ -5,8 +5,12 @@
 //! the same shape the `sv2-apps` miner apps use for their error kinds.
 
 use std::fmt;
+use std::sync::PoisonError;
 use stratum_apps::config_helpers::ConfigError;
 use stratum_apps::network_helpers;
+use stratum_apps::stratum_core::channels_sv2::client::error::{
+    ExtendedChannelError, StandardChannelError,
+};
 use stratum_apps::stratum_core::handlers_sv2::HandlerErrorType;
 use stratum_apps::stratum_core::parsers_sv2::ParserError;
 use stratum_apps::utils::types::{ExtensionType, MessageType};
@@ -37,6 +41,12 @@ pub enum Sv2CpuMinerError {
     StandardJobsOnly(&'static str),
     /// The mining server accepted the connection with parameters this miner cannot honour.
     SetupConnectionMismatch(String),
+    /// A task panicked while holding a channel lock, leaving that channel's state unusable.
+    PoisonLock,
+    /// A standard channel refused a message from the mining server.
+    StandardChannel(StandardChannelError),
+    /// An extended channel refused a message from the mining server.
+    ExtendedChannel(ExtendedChannelError),
 }
 
 impl std::error::Error for Sv2CpuMinerError {}
@@ -64,6 +74,9 @@ impl fmt::Display for Sv2CpuMinerError {
             SetupConnectionMismatch(reason) => {
                 write!(f, "SetupConnection.Success cannot be honoured: {reason}")
             }
+            PoisonLock => write!(f, "channel lock poisoned by a panicking task"),
+            StandardChannel(e) => write!(f, "standard channel error: {e:?}"),
+            ExtendedChannel(e) => write!(f, "extended channel error: {e:?}"),
         }
     }
 }
@@ -101,6 +114,24 @@ impl From<async_channel::RecvError> for Sv2CpuMinerError {
 impl From<ParserError> for Sv2CpuMinerError {
     fn from(e: ParserError) -> Self {
         Self::Parser(e)
+    }
+}
+
+impl<T> From<PoisonError<T>> for Sv2CpuMinerError {
+    fn from(_: PoisonError<T>) -> Self {
+        Self::PoisonLock
+    }
+}
+
+impl From<StandardChannelError> for Sv2CpuMinerError {
+    fn from(e: StandardChannelError) -> Self {
+        Self::StandardChannel(e)
+    }
+}
+
+impl From<ExtendedChannelError> for Sv2CpuMinerError {
+    fn from(e: ExtendedChannelError) -> Self {
+        Self::ExtendedChannel(e)
     }
 }
 

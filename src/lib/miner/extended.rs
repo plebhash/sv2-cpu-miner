@@ -8,7 +8,6 @@ use stratum_apps::stratum_core::bitcoin::{
     blockdata::block::{Header, Version},
     hashes::sha256d::Hash,
 };
-use stratum_apps::stratum_core::channels_sv2::client::error::ExtendedChannelError;
 use stratum_apps::stratum_core::channels_sv2::client::extended::ExtendedChannel;
 use stratum_apps::stratum_core::channels_sv2::extranonce_manager::ExtranoncePrefix;
 use stratum_apps::stratum_core::channels_sv2::merkle_root::merkle_root_from_path;
@@ -20,7 +19,7 @@ use stratum_apps::stratum_core::parsers_sv2::MiningOwned;
 use stratum_apps::sync::SharedRw;
 use stratum_apps::utils::types::{Message, OutboundFrame};
 
-use super::{CPU_THROTTLE_WINDOW_MS, LOCK_POISONED};
+use super::CPU_THROTTLE_WINDOW_MS;
 
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -62,19 +61,18 @@ impl ExtendedChannelMiner {
     }
 
     /// Full extranonce size of this channel, which every member of a group must share.
-    pub fn full_extranonce_size(&self) -> usize {
-        self.extended_channel
-            .read(|channel| channel.get_full_extranonce_size())
-            .expect(LOCK_POISONED)
+    pub fn full_extranonce_size(&self) -> Result<usize, Sv2CpuMinerError> {
+        Ok(self
+            .extended_channel
+            .read(|channel| channel.get_full_extranonce_size())?)
     }
 
     pub fn set_extranonce_prefix(
         &mut self,
         extranonce_prefix: ExtranoncePrefix,
-    ) -> Result<(), ExtendedChannelError> {
+    ) -> Result<(), Sv2CpuMinerError> {
         self.extended_channel
-            .write(|channel| channel.set_extranonce_prefix(extranonce_prefix))
-            .expect(LOCK_POISONED)?;
+            .write(|channel| channel.set_extranonce_prefix(extranonce_prefix))??;
         Ok(())
     }
 
@@ -83,10 +81,10 @@ impl ExtendedChannelMiner {
     pub fn on_new_extended_mining_job(
         &mut self,
         new_extended_mining_job: NewExtendedMiningJobOwned,
-    ) -> Result<(), ExtendedChannelError> {
-        self.extended_channel
-            .write(|channel| channel.on_new_extended_mining_job(new_extended_mining_job.clone()))
-            .expect(LOCK_POISONED)?;
+    ) -> Result<(), Sv2CpuMinerError> {
+        self.extended_channel.write(|channel| {
+            channel.on_new_extended_mining_job(new_extended_mining_job.clone())
+        })??;
 
         // this is a non-future job
         // we should start mining immediately
@@ -124,10 +122,9 @@ impl ExtendedChannelMiner {
     pub fn on_set_new_prev_hash(
         &mut self,
         set_new_prev_hash: SetNewPrevHashOwned,
-    ) -> Result<(), ExtendedChannelError> {
+    ) -> Result<(), Sv2CpuMinerError> {
         self.extended_channel
-            .write(|channel| channel.on_set_new_prev_hash(set_new_prev_hash.clone()))
-            .expect(LOCK_POISONED)?;
+            .write(|channel| channel.on_set_new_prev_hash(set_new_prev_hash.clone()))??;
 
         if !self.miner_cancellation_token.is_cancelled() {
             // trigger miner cancellation token to kill task of past job
@@ -158,10 +155,10 @@ impl ExtendedChannelMiner {
         Ok(())
     }
 
-    pub fn set_target(&mut self, target: Target) -> Result<(), ExtendedChannelError> {
+    pub fn set_target(&mut self, target: Target) -> Result<(), Sv2CpuMinerError> {
         self.extended_channel
-            .write(|channel| channel.set_target(target))
-            .expect(LOCK_POISONED)
+            .write(|channel| channel.set_target(target))??;
+        Ok(())
     }
 }
 
@@ -182,25 +179,27 @@ async fn mine_job(
         }
     }
 
-    let (channel_id, active_job, channel_target, nbits, prevhash, extranonce_size) =
-        extended_channel
-            .read(|channel| {
-                let chain_tip = channel
-                    .get_chain_tip()
-                    .expect("channel must have chain tip");
-                (
-                    channel.get_channel_id(),
-                    channel
-                        .get_active_job()
-                        .expect("channel must have active job")
-                        .clone(),
-                    *channel.get_target(),
-                    chain_tip.nbits(),
-                    u256_to_block_hash(chain_tip.prev_hash()),
-                    channel.get_rollable_extranonce_size() as usize,
-                )
-            })
-            .expect(LOCK_POISONED);
+    let Ok((channel_id, active_job, channel_target, nbits, prevhash, extranonce_size)) =
+        extended_channel.read(|channel| {
+            let chain_tip = channel
+                .get_chain_tip()
+                .expect("channel must have chain tip");
+            (
+                channel.get_channel_id(),
+                channel
+                    .get_active_job()
+                    .expect("channel must have active job")
+                    .clone(),
+                *channel.get_target(),
+                chain_tip.nbits(),
+                u256_to_block_hash(chain_tip.prev_hash()),
+                channel.get_rollable_extranonce_size() as usize,
+            )
+        })
+    else {
+        error!("Channel lock poisoned, stopping the miner task");
+        return;
+    };
 
     let job_id = active_job.job_message.job_id;
     let version = active_job.job_message.version;
@@ -270,25 +269,26 @@ async fn mine_job(
                 // is share valid?
                 if hash_as_target <= channel_target {
                     // log share on channel state
-                    let share = extended_channel
-                        .write(|channel| {
-                            let sequence_number = channel
-                                .get_share_accounting()
-                                .get_last_share_sequence_number()
-                                + 1;
-                            let share = SubmitSharesExtendedOwned {
-                                channel_id,
-                                sequence_number,
-                                job_id,
-                                nonce,
-                                ntime,
-                                version,
-                                extranonce: extranonce.clone().try_into().expect("extranonce must be serializable"),
-                            };
-                            let _ = channel.validate_share(share.clone());
-                            share
-                        })
-                        .expect(LOCK_POISONED);
+                    let Ok(share) = extended_channel.write(|channel| {
+                        let sequence_number = channel
+                            .get_share_accounting()
+                            .get_last_share_sequence_number()
+                            + 1;
+                        let share = SubmitSharesExtendedOwned {
+                            channel_id,
+                            sequence_number,
+                            job_id,
+                            nonce,
+                            ntime,
+                            version,
+                            extranonce: extranonce.clone().try_into().expect("extranonce must be serializable"),
+                        };
+                        let _ = channel.validate_share(share.clone());
+                        share
+                    }) else {
+                        error!("Channel lock poisoned, stopping the miner task");
+                        return;
+                    };
 
                     let submit = async {
                         let frame = OutboundFrame::from_message(Message::Mining(
@@ -327,5 +327,50 @@ async fn mine_job(
                 };
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    #[test]
+    fn poisoned_lock_is_an_error_not_a_panic() {
+        let channel = ExtendedChannel::new(
+            1,
+            "user".to_string(),
+            ExtranoncePrefix::from_wire(vec![0; 28]).unwrap(),
+            Target::from_le_bytes([0xff; 32]),
+            1.0,
+            true,
+            4,
+            None,
+        )
+        .unwrap();
+        let (upstream_sender, _receiver) = async_channel::unbounded();
+        let mut miner = ExtendedChannelMiner::new(
+            channel,
+            100,
+            false,
+            upstream_sender,
+            CancellationToken::new(),
+        );
+
+        let poison = catch_unwind(AssertUnwindSafe(|| {
+            let _ = miner
+                .extended_channel
+                .write(|_channel| -> () { panic!("poison") });
+        }));
+        assert!(poison.is_err());
+
+        assert!(matches!(
+            miner.set_target(Target::from_le_bytes([1; 32])),
+            Err(Sv2CpuMinerError::PoisonLock)
+        ));
+        assert!(matches!(
+            miner.full_extranonce_size(),
+            Err(Sv2CpuMinerError::PoisonLock)
+        ));
     }
 }

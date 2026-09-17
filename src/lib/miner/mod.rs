@@ -18,10 +18,6 @@ use tracing::{error, info};
 /// The miner will work for N% of this window, then sleep for (100-N)% of this window
 pub const CPU_THROTTLE_WINDOW_MS: u64 = 100;
 
-/// A poisoned channel lock means a task panicked while updating channel state, which is a
-/// bug; mining cannot sensibly continue on that channel.
-pub(crate) const LOCK_POISONED: &str = "channel lock poisoned by a panicking task";
-
 /// Measures the hashrate of this CPU for 1 second
 /// Returns the hashrate in hashes per second
 pub async fn measure_hashrate(cpu_usage_percent: u64) -> f32 {

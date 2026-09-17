@@ -38,14 +38,14 @@ impl ChannelManager {
     }
 
     /// Full extranonce size of an open channel, which every member of a group must share.
-    fn full_extranonce_size(&self, channel_id: u32) -> Option<usize> {
+    fn full_extranonce_size(&self, channel_id: u32) -> Result<Option<usize>, Sv2CpuMinerError> {
         if let Some(standard_miner) = self.standard_channels.get(&channel_id) {
-            return Some(standard_miner.full_extranonce_size());
+            return Ok(Some(standard_miner.full_extranonce_size()?));
         }
         if let Some(extended_miner) = self.extended_channels.get(&channel_id) {
-            return Some(extended_miner.full_extranonce_size());
+            return Ok(Some(extended_miner.full_extranonce_size()?));
         }
-        None
+        Ok(None)
     }
 
     /// Records a newly opened channel as a member of its group, creating the group on first use.
@@ -333,6 +333,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                         set_extranonce_prefix.channel_id, set_extranonce_prefix.extranonce_prefix
                     );
                 }
+                Err(Sv2CpuMinerError::PoisonLock) => return Err(Sv2CpuMinerError::PoisonLock),
                 Err(e) => {
                     error!(
                         "failed to set new extranonce prefix for standard channel with id: {}, error: {:?}",
@@ -364,6 +365,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                         set_extranonce_prefix.channel_id, set_extranonce_prefix.extranonce_prefix
                     );
                 }
+                Err(Sv2CpuMinerError::PoisonLock) => return Err(Sv2CpuMinerError::PoisonLock),
                 Err(e) => {
                     error!(
                         "failed to set new extranonce prefix for extended channel with id: {}, error: {:?}",
@@ -426,6 +428,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                             new_mining_job.channel_id, new_mining_job.job_id
                         );
                     }
+                    Err(Sv2CpuMinerError::PoisonLock) => return Err(Sv2CpuMinerError::PoisonLock),
                     Err(e) => {
                         error!(
                             "Failed to process NewMiningJob for Standard Channel with ID: {}, error: {:?}",
@@ -472,6 +475,9 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                                 channel_id, job_id
                             );
                         }
+                        Err(Sv2CpuMinerError::PoisonLock) => {
+                            return Err(Sv2CpuMinerError::PoisonLock);
+                        }
                         Err(e) => {
                             error!(
                                 "Failed to process NewExtendedMiningJob for Extended Channel with ID: {}, error: {:?}",
@@ -495,6 +501,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                             channel_id, member_id, job_id
                         );
                     }
+                    Err(Sv2CpuMinerError::PoisonLock) => return Err(Sv2CpuMinerError::PoisonLock),
                     Err(e) => {
                         error!(
                             "Failed to process group NewExtendedMiningJob for Standard Channel with ID: {}, error: {:?}",
@@ -510,6 +517,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                             channel_id, member_id, job_id
                         );
                     }
+                    Err(Sv2CpuMinerError::PoisonLock) => return Err(Sv2CpuMinerError::PoisonLock),
                     Err(e) => {
                         error!(
                             "Failed to process group NewExtendedMiningJob for Extended Channel with ID: {}, error: {:?}",
@@ -545,6 +553,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                             channel_id, set_new_prev_hash.job_id
                         );
                     }
+                    Err(Sv2CpuMinerError::PoisonLock) => return Err(Sv2CpuMinerError::PoisonLock),
                     Err(e) => {
                         error!(
                             "Failed to process SetNewPrevHash for Standard Channel with ID: {}, error: {:?}",
@@ -560,6 +569,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                             channel_id, set_new_prev_hash.job_id
                         );
                     }
+                    Err(Sv2CpuMinerError::PoisonLock) => return Err(Sv2CpuMinerError::PoisonLock),
                     Err(e) => {
                         error!(
                             "Failed to process SetNewPrevHash for Extended Channel with ID: {}, error: {:?}",
@@ -620,6 +630,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                     Ok(()) => {
                         info!("SetTarget processed: Standard Channel ID: {}", channel_id);
                     }
+                    Err(Sv2CpuMinerError::PoisonLock) => return Err(Sv2CpuMinerError::PoisonLock),
                     Err(e) => {
                         error!(
                             "Failed to process SetTarget for Standard Channel with ID: {}, error: {:?}",
@@ -632,6 +643,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                     Ok(()) => {
                         info!("SetTarget processed: Extended Channel ID: {}", channel_id);
                     }
+                    Err(Sv2CpuMinerError::PoisonLock) => return Err(Sv2CpuMinerError::PoisonLock),
                     Err(e) => {
                         error!(
                             "Failed to process SetTarget for Extended Channel with ID: {}, error: {:?}",
@@ -678,7 +690,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
         // validate the whole redefinition before touching any group
         let mut redefined_group = GroupChannel::new(group_channel_id);
         for &channel_id in &channel_ids {
-            let Some(full_extranonce_size) = self.full_extranonce_size(channel_id) else {
+            let Some(full_extranonce_size) = self.full_extranonce_size(channel_id)? else {
                 error!(
                     "SetGroupChannel lists unknown Channel ID: {}, ignoring.",
                     channel_id
@@ -797,7 +809,9 @@ mod tests {
     }
 
     fn future_job_ids(handler: &ChannelManager, channel_id: u32) -> Vec<u32> {
-        let mut job_ids = handler.standard_channels[&channel_id].future_job_ids();
+        let mut job_ids = handler.standard_channels[&channel_id]
+            .future_job_ids()
+            .unwrap();
         job_ids.sort_unstable();
         job_ids
     }
