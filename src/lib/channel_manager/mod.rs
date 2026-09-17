@@ -1,4 +1,4 @@
-use crate::client::format_number_with_underscores;
+use crate::miner::format_number_with_underscores;
 use std::collections::HashMap;
 use stratum_apps::stratum_core::channels_sv2::client::group::GroupChannel;
 use stratum_apps::stratum_core::mining_sv2::{

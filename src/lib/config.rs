@@ -5,10 +5,6 @@ use std::path::PathBuf;
 use stratum_apps::config_helpers::opt_path_from_toml;
 use stratum_apps::key_utils::Secp256k1PublicKey;
 
-/// Duration of each CPU throttling cycle in milliseconds
-/// The miner will work for N% of this window, then sleep for (100-N)% of this window
-pub const CPU_THROTTLE_WINDOW_MS: u64 = 100;
-
 #[derive(Clone, Deserialize)]
 pub struct Sv2CpuMinerConfig {
     pub server_addr: SocketAddr,

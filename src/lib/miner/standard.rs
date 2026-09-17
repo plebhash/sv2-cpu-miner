@@ -15,9 +15,7 @@ use stratum_apps::stratum_core::parsers_sv2::MiningOwned;
 use stratum_apps::sync::SharedRw;
 use stratum_apps::utils::types::{Message, OutboundFrame};
 
-use super::LOCK_POISONED;
-
-use crate::config::CPU_THROTTLE_WINDOW_MS;
+use super::{CPU_THROTTLE_WINDOW_MS, LOCK_POISONED};
 
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
