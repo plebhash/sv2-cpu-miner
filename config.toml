@@ -17,7 +17,7 @@ requires_standard_jobs = false
 user_identity = "username"
 
 # device_id string for Sv2 connection
-device_id = "sv2-cpu-miner"
+device_id = "cpu_miner_sv2"
 
 # flag to stop hashing on the job after submitting the first share
 single_submit = false
@@ -31,4 +31,4 @@ cpu_usage_percent = 100
 nominal_hashrate_multiplier = 1.0
 
 # optional path to a log file (logs always go to stdout too); -f/--log-file overrides it
-# log_file = "sv2-cpu-miner.log"
+# log_file = "cpu_miner_sv2.log"

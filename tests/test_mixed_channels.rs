@@ -1,11 +1,11 @@
+use cpu_miner_sv2::client::Sv2CpuMiner;
+use cpu_miner_sv2::config::Sv2CpuMinerConfig;
 use integration_tests_sv2::{
     interceptor::MessageDirection, start_pool, start_sniffer, start_template_provider,
     sv2_tp_config, template_provider::DifficultyLevel,
 };
 use stratum_apps::stratum_core::common_messages_sv2::*;
 use stratum_apps::stratum_core::mining_sv2::*;
-use sv2_cpu_miner::client::Sv2CpuMiner;
-use sv2_cpu_miner::config::Sv2CpuMinerConfig;
 
 // One standard + one extended channel on a single connection. Without
 // REQUIRES_STANDARD_JOBS the mining server may serve every channel through the group

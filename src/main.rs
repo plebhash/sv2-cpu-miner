@@ -1,11 +1,11 @@
-//! The `sv2-cpu-miner` binary: loads the configuration, runs one `Sv2CpuMiner` and turns
+//! The `cpu_miner_sv2` binary: loads the configuration, runs one `Sv2CpuMiner` and turns
 //! its outcome into the exit status.
 
 mod args;
 
+use cpu_miner_sv2::client::Sv2CpuMiner;
 use std::process::ExitCode;
 use stratum_apps::config_helpers::logging::init_logging;
-use sv2_cpu_miner::client::Sv2CpuMiner;
 
 use crate::args::process_cli_args;
 

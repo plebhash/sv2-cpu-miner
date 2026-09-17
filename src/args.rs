@@ -1,10 +1,10 @@
 //! Command-line arguments and configuration loading for the Sv2 CPU Miner binary.
 
 use clap::Parser;
+use cpu_miner_sv2::config::Sv2CpuMinerConfig;
+use cpu_miner_sv2::error::Sv2CpuMinerError;
 use std::path::PathBuf;
 use stratum_apps::config_helpers::load_config;
-use sv2_cpu_miner::config::Sv2CpuMinerConfig;
-use sv2_cpu_miner::error::Sv2CpuMinerError;
 
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]

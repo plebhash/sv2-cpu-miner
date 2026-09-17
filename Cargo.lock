@@ -1435,6 +1435,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "cpu_miner_sv2"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "clap",
+ "integration_tests_sv2",
+ "serde",
+ "stratum-apps",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3914,21 +3929,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
-]
-
-[[package]]
-name = "sv2-cpu-miner"
-version = "0.1.0"
-dependencies = [
- "async-channel",
- "clap",
- "integration_tests_sv2",
- "serde",
- "stratum-apps",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

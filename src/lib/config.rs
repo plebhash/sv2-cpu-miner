@@ -75,7 +75,7 @@ mod tests {
             n_extended_channels: 1,
             n_standard_channels: 1,
             user_identity: "user".to_string(),
-            device_id: "sv2-cpu-miner".to_string(),
+            device_id: "cpu_miner_sv2".to_string(),
             single_submit: false,
             cpu_usage_percent: 100,
             nominal_hashrate_multiplier: 1.0,
