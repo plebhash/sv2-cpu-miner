@@ -55,6 +55,14 @@ impl ExtendedMiner {
         }
     }
 
+    /// Full extranonce size of this channel, which every member of a group must share.
+    pub async fn full_extranonce_size(&self) -> usize {
+        self.extended_channel
+            .read()
+            .await
+            .get_full_extranonce_size()
+    }
+
     pub async fn set_extranonce_prefix(
         &mut self,
         extranonce_prefix: ExtranoncePrefix,

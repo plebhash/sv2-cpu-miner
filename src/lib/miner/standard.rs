@@ -54,6 +54,25 @@ impl StandardMiner {
         }
     }
 
+    /// Full extranonce size of this channel, which every member of a group must share.
+    pub async fn full_extranonce_size(&self) -> usize {
+        self.standard_channel
+            .read()
+            .await
+            .get_extranonce_prefix()
+            .len()
+    }
+
+    #[cfg(test)]
+    pub async fn future_job_ids(&self) -> Vec<u32> {
+        self.standard_channel
+            .read()
+            .await
+            .get_future_jobs()
+            .map(|(job_id, _)| *job_id)
+            .collect()
+    }
+
     pub async fn set_extranonce_prefix(
         &mut self,
         extranonce_prefix: ExtranoncePrefix,

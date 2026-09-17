@@ -1,6 +1,7 @@
 use crate::client::{Message, StdFrame, format_number_with_underscores};
 use std::collections::HashMap;
 use stratum_apps::stratum_core::channels_sv2::client::extended::ExtendedChannel;
+use stratum_apps::stratum_core::channels_sv2::client::group::GroupChannel;
 use stratum_apps::stratum_core::channels_sv2::client::standard::StandardChannel;
 use stratum_apps::stratum_core::channels_sv2::extranonce_manager::ExtranoncePrefix;
 use stratum_apps::stratum_core::common_messages_sv2::{
@@ -13,13 +14,13 @@ use stratum_apps::stratum_core::handlers_sv2::{
 };
 use stratum_apps::stratum_core::mining_sv2::{
     CloseChannelOwned, MESSAGE_TYPE_SET_CUSTOM_MINING_JOB_ERROR,
-    MESSAGE_TYPE_SET_CUSTOM_MINING_JOB_SUCCESS, MESSAGE_TYPE_SET_GROUP_CHANNEL,
-    NewExtendedMiningJobOwned, NewMiningJobOwned, OpenExtendedMiningChannelOwned,
-    OpenExtendedMiningChannelSuccessOwned, OpenMiningChannelErrorOwned,
-    OpenStandardMiningChannelOwned, OpenStandardMiningChannelSuccessOwned,
-    SetCustomMiningJobErrorOwned, SetCustomMiningJobSuccessOwned, SetExtranoncePrefixOwned,
-    SetGroupChannelOwned, SetNewPrevHashOwned, SetTargetOwned, SubmitSharesErrorOwned,
-    SubmitSharesSuccessOwned, UpdateChannelErrorOwned,
+    MESSAGE_TYPE_SET_CUSTOM_MINING_JOB_SUCCESS, NewExtendedMiningJobOwned, NewMiningJobOwned,
+    OpenExtendedMiningChannelOwned, OpenExtendedMiningChannelSuccessOwned,
+    OpenMiningChannelErrorOwned, OpenStandardMiningChannelOwned,
+    OpenStandardMiningChannelSuccessOwned, SetCustomMiningJobErrorOwned,
+    SetCustomMiningJobSuccessOwned, SetExtranoncePrefixOwned, SetGroupChannelOwned,
+    SetNewPrevHashOwned, SetTargetOwned, SubmitSharesErrorOwned, SubmitSharesSuccessOwned,
+    UpdateChannelErrorOwned,
 };
 use stratum_apps::stratum_core::parsers_sv2::{MiningOwned, Tlv};
 
@@ -43,9 +44,10 @@ pub struct Sv2CpuMinerClientHandler {
     cpu_usage_percent: u64,
     extended_channels: HashMap<u32, ExtendedMiner>,
     standard_channels: HashMap<u32, StandardMiner>,
-    // on connections without REQUIRES_STANDARD_JOBS, the pool groups all channels and
-    // addresses subsequent NewExtendedMiningJob/SetNewPrevHash to this group channel id
-    group_channel_id: Option<u32>,
+    // every channel belongs to a group (spec 5.2.3); a server may run several groups on one
+    // connection and redefine them with SetGroupChannel, so membership is tracked per group id
+    // and server messages addressed to a group id fan out to that group's members only
+    group_channels: HashMap<u32, GroupChannel>,
     event_injector: async_channel::Sender<StdFrame>,
     cancellation_token: CancellationToken,
 }
@@ -73,7 +75,7 @@ impl Sv2CpuMinerClientHandler {
             cpu_usage_percent,
             extended_channels: HashMap::with_capacity(n_extended_channels as usize),
             standard_channels: HashMap::with_capacity(n_standard_channels as usize),
-            group_channel_id: None,
+            group_channels: HashMap::new(),
             event_injector,
             cancellation_token,
         }
@@ -132,6 +134,70 @@ impl Sv2CpuMinerClientHandler {
         }
 
         Ok(())
+    }
+
+    /// Channels addressed by a server message: the members of `channel_id` when it names a
+    /// group, otherwise `channel_id` itself. Group and channel ids share one namespace per
+    /// connection (spec 5.2.3), so the lookup is unambiguous.
+    fn addressed_channels(&self, channel_id: u32) -> Vec<u32> {
+        match self.group_channels.get(&channel_id) {
+            Some(group) => group.get_channel_ids().copied().collect(),
+            None => vec![channel_id],
+        }
+    }
+
+    /// Full extranonce size of an open channel, which every member of a group must share.
+    async fn full_extranonce_size(&self, channel_id: u32) -> Option<usize> {
+        if let Some(standard_miner) = self.standard_channels.get(&channel_id) {
+            return Some(standard_miner.full_extranonce_size().await);
+        }
+        if let Some(extended_miner) = self.extended_channels.get(&channel_id) {
+            return Some(extended_miner.full_extranonce_size().await);
+        }
+        None
+    }
+
+    /// Records a newly opened channel as a member of its group, creating the group on first use.
+    ///
+    /// Returns `true` when the channel is now a member and opening it may proceed. Returns
+    /// `false` when the channel cannot be used on this connection: its ids collide with ids
+    /// already in use (group and channel ids share one namespace, spec 5.2.3) or its full
+    /// extranonce size differs from the group's (spec 5.2.3). The reason is logged here, so the
+    /// caller only has to drop the OpenMiningChannel.Success it was handling.
+    fn join_group(
+        &mut self,
+        channel_id: u32,
+        group_channel_id: u32,
+        full_extranonce_size: usize,
+    ) -> bool {
+        let reinterprets_channel = self.standard_channels.contains_key(&group_channel_id)
+            || self.extended_channels.contains_key(&group_channel_id);
+        if reinterprets_channel
+            || channel_id == group_channel_id
+            || self.group_channels.contains_key(&channel_id)
+        {
+            error!(
+                "Channel ID: {} and Group Channel ID: {} collide with ids already in use on this connection",
+                channel_id, group_channel_id
+            );
+            return false;
+        }
+
+        let group = self
+            .group_channels
+            .entry(group_channel_id)
+            .or_insert_with(|| GroupChannel::new(group_channel_id));
+        match group.add_channel_id(channel_id, full_extranonce_size) {
+            Ok(()) => true,
+            Err(e) => {
+                error!(
+                    "Channel ID: {} cannot join Group Channel ID: {}: {:?}",
+                    channel_id, group_channel_id, e
+                );
+                self.group_channels.retain(|_, group| !group.is_empty());
+                false
+            }
+        }
     }
 }
 
@@ -253,7 +319,13 @@ impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
 
         debug!("Created new Standard Channel: {:?}", standard_channel);
 
-        self.group_channel_id = Some(open_standard_mining_channel_success.group_channel_id);
+        if !self.join_group(
+            open_standard_mining_channel_success.channel_id,
+            open_standard_mining_channel_success.group_channel_id,
+            open_standard_mining_channel_success.extranonce_prefix.len(),
+        ) {
+            return Ok(());
+        }
 
         self.standard_channels.insert(
             open_standard_mining_channel_success.channel_id,
@@ -314,7 +386,14 @@ impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
 
         debug!("Created new Extended Channel: {:?}", extended_channel);
 
-        self.group_channel_id = Some(open_extended_mining_channel_success.group_channel_id);
+        if !self.join_group(
+            open_extended_mining_channel_success.channel_id,
+            open_extended_mining_channel_success.group_channel_id,
+            open_extended_mining_channel_success.extranonce_prefix.len()
+                + open_extended_mining_channel_success.extranonce_size as usize,
+        ) {
+            return Ok(());
+        }
 
         self.extended_channels.insert(
             open_extended_mining_channel_success.channel_id,
@@ -361,35 +440,23 @@ impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
     ) -> Result<(), Self::Error> {
         info!("Received CloseChannel: {}", close_channel);
 
-        let has_standard_channel = self
-            .standard_channels
-            .contains_key(&close_channel.channel_id);
-        let has_extended_channel = self
-            .extended_channels
-            .contains_key(&close_channel.channel_id);
-
-        if has_standard_channel {
-            self.standard_channels.remove(&close_channel.channel_id);
-            info!(
-                "Removed Standard Channel with ID: {}",
-                close_channel.channel_id
-            );
+        for channel_id in self.addressed_channels(close_channel.channel_id) {
+            if self.standard_channels.remove(&channel_id).is_some() {
+                info!("Removed Standard Channel with ID: {}", channel_id);
+            } else if self.extended_channels.remove(&channel_id).is_some() {
+                info!("Removed Extended Channel with ID: {}", channel_id);
+            } else {
+                error!(
+                    "Channel with ID: {} not found, ignoring CloseChannel.",
+                    channel_id
+                );
+                continue;
+            }
+            for group in self.group_channels.values_mut() {
+                group.remove_channel_id(channel_id);
+            }
         }
-
-        if has_extended_channel {
-            self.extended_channels.remove(&close_channel.channel_id);
-            info!(
-                "Removed Extended Channel with ID: {}",
-                close_channel.channel_id
-            );
-        }
-
-        if !has_standard_channel && !has_extended_channel {
-            error!(
-                "Channel with ID: {} not found, ignoring CloseChannel.",
-                close_channel.channel_id
-            );
-        }
+        self.group_channels.retain(|_, group| !group.is_empty());
 
         Ok(())
     }
@@ -555,9 +622,46 @@ impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
     ) -> Result<(), Self::Error> {
         info!("Received NewExtendedMiningJob: {}", new_extended_mining_job);
 
-        // group-addressed job: applies to every channel on this connection
-        if Some(new_extended_mining_job.channel_id) == self.group_channel_id {
-            for (channel_id, standard_miner) in self.standard_channels.iter_mut() {
+        let channel_id = new_extended_mining_job.channel_id;
+        let job_id = new_extended_mining_job.job_id;
+
+        let Some(group) = self.group_channels.get(&channel_id) else {
+            // addressed to one extended channel; a standard channel only ever receives an
+            // extended job through its group
+            match self.extended_channels.get_mut(&channel_id) {
+                None => {
+                    error!(
+                        "Extended Channel ID: {} not found. Ignoring NewExtendedMiningJob.",
+                        channel_id
+                    );
+                }
+                Some(extended_miner) => {
+                    match extended_miner
+                        .on_new_extended_mining_job(new_extended_mining_job)
+                        .await
+                    {
+                        Ok(()) => {
+                            info!(
+                                "NewExtendedMiningJob processed: Extended Channel ID: {}, Job ID: {}",
+                                channel_id, job_id
+                            );
+                        }
+                        Err(e) => {
+                            error!(
+                                "Failed to process NewExtendedMiningJob for Extended Channel with ID: {}, error: {:?}",
+                                channel_id, e
+                            );
+                        }
+                    }
+                }
+            }
+            return Ok(());
+        };
+
+        // group broadcast: standard members derive their own merkle root from the extended job
+        let members: Vec<u32> = group.get_channel_ids().copied().collect();
+        for member_id in members {
+            if let Some(standard_miner) = self.standard_channels.get_mut(&member_id) {
                 match standard_miner
                     .on_group_channel_job(new_extended_mining_job.clone())
                     .await
@@ -565,20 +669,17 @@ impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
                     Ok(()) => {
                         info!(
                             "NewExtendedMiningJob processed: Group Channel ID: {}, Standard Channel ID: {}, Job ID: {}",
-                            new_extended_mining_job.channel_id,
-                            channel_id,
-                            new_extended_mining_job.job_id
+                            channel_id, member_id, job_id
                         );
                     }
                     Err(e) => {
                         error!(
                             "Failed to process group NewExtendedMiningJob for Standard Channel with ID: {}, error: {:?}",
-                            channel_id, e
+                            member_id, e
                         );
                     }
                 }
-            }
-            for (channel_id, extended_miner) in self.extended_channels.iter_mut() {
+            } else if let Some(extended_miner) = self.extended_channels.get_mut(&member_id) {
                 match extended_miner
                     .on_new_extended_mining_job(new_extended_mining_job.clone())
                     .await
@@ -586,50 +687,21 @@ impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
                     Ok(()) => {
                         info!(
                             "NewExtendedMiningJob processed: Group Channel ID: {}, Extended Channel ID: {}, Job ID: {}",
-                            new_extended_mining_job.channel_id,
-                            channel_id,
-                            new_extended_mining_job.job_id
+                            channel_id, member_id, job_id
                         );
                     }
                     Err(e) => {
                         error!(
                             "Failed to process group NewExtendedMiningJob for Extended Channel with ID: {}, error: {:?}",
-                            channel_id, e
+                            member_id, e
                         );
                     }
                 }
-            }
-            return Ok(());
-        }
-
-        match self
-            .extended_channels
-            .get_mut(&new_extended_mining_job.channel_id)
-        {
-            None => {
+            } else {
                 error!(
-                    "Extended Channel ID: {} not found. Ignoring NewExtendedMiningJob.",
-                    new_extended_mining_job.channel_id
+                    "Group Channel ID: {} lists unknown Channel ID: {}. Ignoring NewExtendedMiningJob for it.",
+                    channel_id, member_id
                 );
-            }
-            Some(extended_channel) => {
-                match extended_channel
-                    .on_new_extended_mining_job(new_extended_mining_job.clone())
-                    .await
-                {
-                    Ok(()) => {
-                        info!(
-                            "NewExtendedMiningJob processed: Extended Channel ID: {:?}, Job ID: {:?}",
-                            new_extended_mining_job.channel_id, new_extended_mining_job.job_id
-                        );
-                    }
-                    Err(e) => {
-                        error!(
-                            "Failed to process NewExtendedMiningJob for Extended Channel with ID: {}, error: {:?}",
-                            new_extended_mining_job.channel_id, e
-                        );
-                    }
-                }
             }
         }
 
@@ -644,111 +716,49 @@ impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
     ) -> Result<(), Self::Error> {
         info!("Received SetNewPrevHash: {}", set_new_prev_hash);
 
-        // group-addressed prev hash: applies to every channel on this connection
-        if Some(set_new_prev_hash.channel_id) == self.group_channel_id {
-            for (channel_id, standard_miner) in self.standard_channels.iter_mut() {
+        for channel_id in self.addressed_channels(set_new_prev_hash.channel_id) {
+            if let Some(standard_miner) = self.standard_channels.get_mut(&channel_id) {
                 match standard_miner
                     .on_set_new_prev_hash(set_new_prev_hash.clone())
                     .await
                 {
                     Ok(()) => {
                         info!(
-                            "SetNewPrevHash processed: Group Channel ID: {}, Standard Channel ID: {}, Job ID: {}",
-                            set_new_prev_hash.channel_id, channel_id, set_new_prev_hash.job_id
+                            "SetNewPrevHash processed: Standard Channel ID: {}, Job ID: {}",
+                            channel_id, set_new_prev_hash.job_id
                         );
                     }
                     Err(e) => {
                         error!(
-                            "Failed to process group SetNewPrevHash for Standard Channel with ID: {}, error: {:?}",
+                            "Failed to process SetNewPrevHash for Standard Channel with ID: {}, error: {:?}",
                             channel_id, e
                         );
                     }
                 }
-            }
-            for (channel_id, extended_miner) in self.extended_channels.iter_mut() {
+            } else if let Some(extended_miner) = self.extended_channels.get_mut(&channel_id) {
                 match extended_miner
                     .on_set_new_prev_hash(set_new_prev_hash.clone())
                     .await
                 {
                     Ok(()) => {
                         info!(
-                            "SetNewPrevHash processed: Group Channel ID: {}, Extended Channel ID: {}, Job ID: {}",
-                            set_new_prev_hash.channel_id, channel_id, set_new_prev_hash.job_id
+                            "SetNewPrevHash processed: Extended Channel ID: {}, Job ID: {}",
+                            channel_id, set_new_prev_hash.job_id
                         );
                     }
                     Err(e) => {
                         error!(
-                            "Failed to process group SetNewPrevHash for Extended Channel with ID: {}, error: {:?}",
+                            "Failed to process SetNewPrevHash for Extended Channel with ID: {}, error: {:?}",
                             channel_id, e
                         );
                     }
                 }
+            } else {
+                error!(
+                    "Channel with ID: {} not found, ignoring SetNewPrevHash.",
+                    channel_id
+                );
             }
-            return Ok(());
-        }
-
-        let has_standard_channel = self
-            .standard_channels
-            .contains_key(&set_new_prev_hash.channel_id);
-        let has_extended_channel = self
-            .extended_channels
-            .contains_key(&set_new_prev_hash.channel_id);
-
-        if !has_standard_channel && !has_extended_channel {
-            error!(
-                "Channel with ID: {} not found, ignoring SetNewPrevHash.",
-                set_new_prev_hash.channel_id
-            );
-        }
-
-        if has_standard_channel {
-            let standard_channel = self
-                .standard_channels
-                .get_mut(&set_new_prev_hash.channel_id)
-                .expect("channel id must exist");
-
-            match standard_channel
-                .on_set_new_prev_hash(set_new_prev_hash.clone())
-                .await
-            {
-                Ok(()) => {
-                    info!(
-                        "SetNewPrevHash processed: Standard Channel ID: {}, Job ID: {}",
-                        set_new_prev_hash.channel_id, set_new_prev_hash.job_id
-                    );
-                }
-                Err(e) => {
-                    error!(
-                        "Failed to process SetNewPrevHash for Standard Channel with ID: {}, error: {:?}",
-                        set_new_prev_hash.channel_id, e
-                    );
-                }
-            };
-        }
-
-        if has_extended_channel {
-            let extended_channel = self
-                .extended_channels
-                .get_mut(&set_new_prev_hash.channel_id)
-                .expect("channel id must exist");
-
-            match extended_channel
-                .on_set_new_prev_hash(set_new_prev_hash.clone())
-                .await
-            {
-                Ok(()) => {
-                    info!(
-                        "SetNewPrevHash processed: Extended Channel ID: {}, Job ID: {}",
-                        set_new_prev_hash.channel_id, set_new_prev_hash.job_id
-                    );
-                }
-                Err(e) => {
-                    error!(
-                        "Failed to process SetNewPrevHash for Extended Channel with ID: {}, error: {:?}",
-                        set_new_prev_hash.channel_id, e
-                    );
-                }
-            };
         }
 
         Ok(())
@@ -790,57 +800,36 @@ impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
 
         let target = Target::from_le_bytes(set_target.maximum_target.to_array());
 
-        let has_standard_channel = self.standard_channels.contains_key(&set_target.channel_id);
-        let has_extended_channel = self.extended_channels.contains_key(&set_target.channel_id);
-
-        if !has_standard_channel && !has_extended_channel {
-            error!(
-                "Channel with ID: {} not found, ignoring SetTarget.",
-                set_target.channel_id
-            );
-        }
-
-        if has_standard_channel {
-            let standard_channel = self
-                .standard_channels
-                .get_mut(&set_target.channel_id)
-                .expect("channel id must exist");
-
-            match standard_channel.set_target(target).await {
-                Ok(()) => {
-                    info!(
-                        "SetTarget processed: Standard Channel ID: {}",
-                        set_target.channel_id
-                    );
+        for channel_id in self.addressed_channels(set_target.channel_id) {
+            if let Some(standard_miner) = self.standard_channels.get_mut(&channel_id) {
+                match standard_miner.set_target(target).await {
+                    Ok(()) => {
+                        info!("SetTarget processed: Standard Channel ID: {}", channel_id);
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to process SetTarget for Standard Channel with ID: {}, error: {:?}",
+                            channel_id, e
+                        );
+                    }
                 }
-                Err(e) => {
-                    error!(
-                        "Failed to process SetTarget for Standard Channel with ID: {}, error: {:?}",
-                        set_target.channel_id, e
-                    );
+            } else if let Some(extended_miner) = self.extended_channels.get_mut(&channel_id) {
+                match extended_miner.set_target(target).await {
+                    Ok(()) => {
+                        info!("SetTarget processed: Extended Channel ID: {}", channel_id);
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to process SetTarget for Extended Channel with ID: {}, error: {:?}",
+                            channel_id, e
+                        );
+                    }
                 }
-            }
-        }
-
-        if has_extended_channel {
-            let extended_channel = self
-                .extended_channels
-                .get_mut(&set_target.channel_id)
-                .expect("channel id must exist");
-
-            match extended_channel.set_target(target).await {
-                Ok(()) => {
-                    info!(
-                        "SetTarget processed: Extended Channel ID: {}",
-                        set_target.channel_id
-                    );
-                }
-                Err(e) => {
-                    error!(
-                        "Failed to process SetTarget for Extended Channel with ID: {}, error: {:?}",
-                        set_target.channel_id, e
-                    );
-                }
+            } else {
+                error!(
+                    "Channel with ID: {} not found, ignoring SetTarget.",
+                    channel_id
+                );
             }
         }
 
@@ -850,13 +839,260 @@ impl HandleMiningMessagesFromServerOwnedAsync for Sv2CpuMinerClientHandler {
     async fn handle_set_group_channel(
         &mut self,
         _server_id: Option<usize>,
-        _set_group_channel: SetGroupChannelOwned,
+        set_group_channel: SetGroupChannelOwned,
         _tlv_fields: Option<&[Tlv]>,
     ) -> Result<(), Self::Error> {
-        error!("Received unexpected SetGroupChannel");
-        Err(Sv2CpuMinerError::unexpected_message(
+        info!("Received SetGroupChannel: {}", set_group_channel);
+
+        let group_channel_id = set_group_channel.group_channel_id;
+        let channel_ids = set_group_channel.channel_ids.into_inner();
+
+        if self.standard_channels.contains_key(&group_channel_id)
+            || self.extended_channels.contains_key(&group_channel_id)
+        {
+            error!(
+                "SetGroupChannel reinterprets open Channel ID: {} as a group channel, ignoring.",
+                group_channel_id
+            );
+            return Ok(());
+        }
+
+        // validate the whole redefinition before touching any group
+        let mut redefined_group = GroupChannel::new(group_channel_id);
+        for &channel_id in &channel_ids {
+            let Some(full_extranonce_size) = self.full_extranonce_size(channel_id).await else {
+                error!(
+                    "SetGroupChannel lists unknown Channel ID: {}, ignoring.",
+                    channel_id
+                );
+                return Ok(());
+            };
+            if let Err(e) = redefined_group.add_channel_id(channel_id, full_extranonce_size) {
+                error!(
+                    "Channel ID: {} cannot join Group Channel ID: {}: {:?}, ignoring SetGroupChannel.",
+                    channel_id, group_channel_id, e
+                );
+                return Ok(());
+            }
+        }
+
+        // the listed channels leave their previous groups and the target group is redefined as
+        // exactly the listed channels, matching the sv2-apps translator
+        for group in self.group_channels.values_mut() {
+            for channel_id in &channel_ids {
+                group.remove_channel_id(*channel_id);
+            }
+        }
+        self.group_channels.remove(&group_channel_id);
+        if !channel_ids.is_empty() {
+            self.group_channels
+                .insert(group_channel_id, redefined_group);
+        }
+        self.group_channels.retain(|_, group| !group.is_empty());
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use stratum_apps::stratum_core::binary_sv2::Sv2OptionOwned;
+
+    fn handler() -> (Sv2CpuMinerClientHandler, async_channel::Receiver<StdFrame>) {
+        let (event_injector, receiver) = async_channel::unbounded();
+        let handler = Sv2CpuMinerClientHandler::new(
+            "user".to_string(),
+            1000.0,
+            1.0,
             0,
-            MESSAGE_TYPE_SET_GROUP_CHANNEL,
-        ))
+            3,
+            false,
+            100,
+            event_injector,
+            CancellationToken::new(),
+        );
+        (handler, receiver)
+    }
+
+    fn open_standard_success(
+        channel_id: u32,
+        group_channel_id: u32,
+    ) -> OpenStandardMiningChannelSuccessOwned {
+        OpenStandardMiningChannelSuccessOwned {
+            request_id: channel_id,
+            channel_id,
+            target: [0xFF_u8; 32].into(),
+            // 32 bytes: the group job fixture's coinbase carries a 32-byte extranonce
+            extranonce_prefix: vec![0_u8; 32].try_into().unwrap(),
+            group_channel_id,
+        }
+    }
+
+    /// Future job whose coinbase parses once a 32-byte extranonce is inserted; the bytes come
+    /// from the channels_sv2 client tests.
+    fn group_job(channel_id: u32, job_id: u32) -> NewExtendedMiningJobOwned {
+        NewExtendedMiningJobOwned {
+            channel_id,
+            job_id,
+            min_ntime: Sv2OptionOwned::new(None),
+            version: 536870912,
+            version_rolling_allowed: true,
+            merkle_path: vec![].try_into().unwrap(),
+            coinbase_tx_prefix: vec![
+                2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 34, 82, 0,
+            ]
+            .try_into()
+            .unwrap(),
+            coinbase_tx_suffix: vec![
+                255, 255, 255, 255, 2, 0, 242, 5, 42, 1, 0, 0, 0, 22, 0, 20, 235, 225, 183, 220,
+                194, 147, 204, 170, 14, 231, 67, 168, 111, 137, 223, 130, 88, 194, 8, 252, 0, 0, 0,
+                0, 0, 0, 0, 0, 38, 106, 36, 170, 33, 169, 237, 226, 246, 28, 63, 113, 209, 222,
+                253, 63, 169, 153, 223, 163, 105, 83, 117, 92, 105, 6, 137, 121, 153, 98, 180, 139,
+                235, 216, 54, 151, 78, 140, 249, 0, 0, 0, 0,
+            ]
+            .try_into()
+            .unwrap(),
+        }
+    }
+
+    /// Opens standard channels 2 and 3 in group 1 and channel 5 in group 4.
+    async fn handler_with_two_groups()
+    -> (Sv2CpuMinerClientHandler, async_channel::Receiver<StdFrame>) {
+        let (mut handler, receiver) = handler();
+        for (channel_id, group_channel_id) in [(2, 1), (3, 1), (5, 4)] {
+            handler
+                .handle_open_standard_mining_channel_success(
+                    None,
+                    open_standard_success(channel_id, group_channel_id),
+                    None,
+                )
+                .await
+                .unwrap();
+        }
+        (handler, receiver)
+    }
+
+    async fn future_job_ids(handler: &Sv2CpuMinerClientHandler, channel_id: u32) -> Vec<u32> {
+        let mut job_ids = handler.standard_channels[&channel_id]
+            .future_job_ids()
+            .await;
+        job_ids.sort_unstable();
+        job_ids
+    }
+
+    #[tokio::test]
+    async fn group_job_reaches_only_the_members_of_that_group() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        handler
+            .handle_new_extended_mining_job(None, group_job(1, 10), None)
+            .await
+            .unwrap();
+        handler
+            .handle_new_extended_mining_job(None, group_job(4, 40), None)
+            .await
+            .unwrap();
+
+        assert_eq!(future_job_ids(&handler, 2).await, vec![10]);
+        assert_eq!(future_job_ids(&handler, 3).await, vec![10]);
+        assert_eq!(future_job_ids(&handler, 5).await, vec![40]);
+    }
+
+    #[tokio::test]
+    async fn extended_job_sent_to_a_standard_channel_is_ignored() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        handler
+            .handle_new_extended_mining_job(None, group_job(2, 10), None)
+            .await
+            .unwrap();
+
+        assert!(future_job_ids(&handler, 2).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn set_group_channel_redefines_membership() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        // group 4 becomes {3, 5}; channel 3 leaves group 1
+        handler
+            .handle_set_group_channel(
+                None,
+                SetGroupChannelOwned {
+                    group_channel_id: 4,
+                    channel_ids: vec![3, 5].try_into().unwrap(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        handler
+            .handle_new_extended_mining_job(None, group_job(1, 10), None)
+            .await
+            .unwrap();
+        handler
+            .handle_new_extended_mining_job(None, group_job(4, 40), None)
+            .await
+            .unwrap();
+
+        assert_eq!(future_job_ids(&handler, 2).await, vec![10]);
+        assert_eq!(future_job_ids(&handler, 3).await, vec![40]);
+        assert_eq!(future_job_ids(&handler, 5).await, vec![40]);
+    }
+
+    #[tokio::test]
+    async fn set_group_channel_reusing_a_channel_id_is_ignored() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        handler
+            .handle_set_group_channel(
+                None,
+                SetGroupChannelOwned {
+                    group_channel_id: 2,
+                    channel_ids: vec![3].try_into().unwrap(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        handler
+            .handle_new_extended_mining_job(None, group_job(1, 10), None)
+            .await
+            .unwrap();
+
+        assert_eq!(future_job_ids(&handler, 3).await, vec![10]);
+        assert!(!handler.group_channels.contains_key(&2));
+    }
+
+    #[tokio::test]
+    async fn close_channel_addressed_to_a_group_closes_its_members() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        handler
+            .handle_close_channel(
+                None,
+                CloseChannelOwned {
+                    channel_id: 1,
+                    reason_code: "test".to_string().try_into().unwrap(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            handler
+                .standard_channels
+                .keys()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![5]
+        );
+        assert_eq!(
+            handler.group_channels.keys().copied().collect::<Vec<_>>(),
+            vec![4]
+        );
     }
 }
