@@ -34,6 +34,8 @@ pub enum Sv2CpuMinerError {
     /// The mining server sent a message that the connection's REQUIRES_STANDARD_JOBS flag
     /// forbids; the payload names the message.
     StandardJobsOnly(&'static str),
+    /// The mining server accepted the connection with parameters this miner cannot honour.
+    SetupConnectionMismatch(String),
 }
 
 impl std::error::Error for Sv2CpuMinerError {}
@@ -58,6 +60,9 @@ impl fmt::Display for Sv2CpuMinerError {
                 f,
                 "mining server sent {message} on a connection that declared REQUIRES_STANDARD_JOBS"
             ),
+            SetupConnectionMismatch(reason) => {
+                write!(f, "SetupConnection.Success cannot be honoured: {reason}")
+            }
         }
     }
 }

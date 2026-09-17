@@ -9,9 +9,13 @@ use stratum_apps::stratum_core::bitcoin::{
     hashes::sha256d::Hash,
 };
 use stratum_apps::stratum_core::channels_sv2::target::u256_to_block_hash;
-use stratum_apps::stratum_core::common_messages_sv2::{Protocol, SetupConnectionOwned};
+use stratum_apps::stratum_core::common_messages_sv2::{
+    MESSAGE_TYPE_SETUP_CONNECTION_ERROR, MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS, Protocol,
+    SetupConnectionOwned,
+};
 use stratum_apps::stratum_core::handlers_sv2::{
     HandleCommonMessagesFromServerOwnedAsync, HandleMiningMessagesFromServerOwnedAsync,
+    HandlerErrorType,
 };
 use stratum_apps::stratum_core::noise_sv2::Initiator;
 use stratum_apps::utils::types::{
@@ -144,6 +148,18 @@ impl Sv2CpuMiner {
 
         let mut incoming = upstream_receiver.recv().await?;
         let header = incoming.header();
+        // the reply must be SetupConnection.Success or .Error; anything else is a violation
+        if header.ext_type() != 0
+            || !matches!(
+                header.msg_type(),
+                MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS | MESSAGE_TYPE_SETUP_CONNECTION_ERROR
+            )
+        {
+            return Err(Sv2CpuMinerError::unexpected_message(
+                header.ext_type(),
+                header.msg_type(),
+            ));
+        }
         self.handle_common_message_frame_from_server(None, header, incoming.payload())
             .await
     }
