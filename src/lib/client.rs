@@ -61,15 +61,16 @@ impl Sv2CpuMiner {
             self.cancellation_token.clone(),
         );
 
-        // The pool rejects OpenExtendedMiningChannel on connections that declare
-        // REQUIRES_STANDARD_JOBS. So the flag is only set when no extended channels are
-        // requested (keeping ungrouped per-channel NewMiningJob for standard channels);
-        // with extended channels the connection runs in group mode instead.
-        let flags = if self.config.n_extended_channels > 0 {
-            0b000_u32
-        } else {
+        // REQUIRES_STANDARD_JOBS declares that this client cannot process extended jobs
+        // (SetupConnection flags table of the Mining Protocol spec). This miner can, so the
+        // flag is a user choice for exercising a mining server's per-channel NewMiningJob
+        // path; validate() refuses it together with extended channels, which only ever carry
+        // extended jobs.
+        let flags = if self.config.requires_standard_jobs {
             // REQUIRES_STANDARD_JOBS, !REQUIRES_WORK_SELECTION, !REQUIRES_VERSION_ROLLING
             0b001_u32
+        } else {
+            0b000_u32
         };
 
         let setup_connection = SetupConnectionOwned {

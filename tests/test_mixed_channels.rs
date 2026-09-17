@@ -8,9 +8,9 @@ use sv2_cpu_miner::client::Sv2CpuMiner;
 use sv2_cpu_miner::config::Sv2CpuMinerConfig;
 
 // One standard + one extended channel on a single connection. Without
-// REQUIRES_STANDARD_JOBS the pool runs the connection in group mode: per-channel
-// jobs at channel-open time, then group-addressed NewExtendedMiningJob and
-// SetNewPrevHash for all channels.
+// REQUIRES_STANDARD_JOBS the mining server may serve every channel through the group
+// channel: per-channel jobs at channel-open time, then group-addressed
+// NewExtendedMiningJob and SetNewPrevHash for all members.
 #[tokio::test]
 async fn test_mining_client_mixed_channels() {
     let _ = tracing_subscriber::fmt().try_init();
@@ -27,6 +27,7 @@ async fn test_mining_client_mixed_channels() {
         auth_pk: None,
         n_extended_channels: 1,
         n_standard_channels: 1,
+        requires_standard_jobs: false,
         user_identity: "test".to_string(),
         device_id: "test".to_string(),
         single_submit: false,

@@ -23,6 +23,7 @@ async fn test_mining_client_one_standard_channel() {
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 1,
+        requires_standard_jobs: true,
         user_identity: "test".to_string(),
         device_id: "test".to_string(),
         single_submit: false,

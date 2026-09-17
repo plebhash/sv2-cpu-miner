@@ -20,6 +20,8 @@ pub struct Sv2CpuMinerConfig {
     pub single_submit: bool,
     pub cpu_usage_percent: u64,
     pub nominal_hashrate_multiplier: f32,
+    #[serde(default)]
+    pub requires_standard_jobs: bool,
     #[serde(default, deserialize_with = "opt_path_from_toml")]
     pub log_file: Option<PathBuf>,
 }
@@ -37,6 +39,12 @@ impl Sv2CpuMinerConfig {
         if self.cpu_usage_percent == 0 || self.cpu_usage_percent > 100 {
             return Err(Sv2CpuMinerError::InvalidConfig(
                 "cpu_usage_percent must be between 1 and 100",
+            ));
+        }
+
+        if self.requires_standard_jobs && self.n_extended_channels > 0 {
+            return Err(Sv2CpuMinerError::InvalidConfig(
+                "n_extended_channels must be 0 when requires_standard_jobs is true",
             ));
         }
 
@@ -71,6 +79,7 @@ mod tests {
             single_submit: false,
             cpu_usage_percent: 100,
             nominal_hashrate_multiplier: 1.0,
+            requires_standard_jobs: false,
             log_file: None,
         }
     }
@@ -89,6 +98,19 @@ mod tests {
         assert!(matches!(
             config.validate(),
             Err(Sv2CpuMinerError::InvalidConfig(msg)) if msg.contains("user_identity")
+        ));
+    }
+
+    #[test]
+    fn rejects_extended_channels_when_standard_jobs_are_required() {
+        let config = Sv2CpuMinerConfig {
+            requires_standard_jobs: true,
+            n_extended_channels: 1,
+            ..valid_config()
+        };
+        assert!(matches!(
+            config.validate(),
+            Err(Sv2CpuMinerError::InvalidConfig(msg)) if msg.contains("requires_standard_jobs")
         ));
     }
 }
