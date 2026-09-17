@@ -30,6 +30,8 @@ $ cargo run -- -c config.toml
 
 Any field in `config.toml` can be overridden with a `CPU_MINER__<FIELD>` environment variable, for example `CPU_MINER__SERVER_ADDR=127.0.0.1:34254`.
 
+Pass `-f <path>` (`--log-file`) to also write the logs to a file.
+
 ## License
 
 This project is licensed under the MIT License.
