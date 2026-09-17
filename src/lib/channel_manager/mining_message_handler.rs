@@ -34,12 +34,12 @@ impl ChannelManager {
     }
 
     /// Full extranonce size of an open channel, which every member of a group must share.
-    async fn full_extranonce_size(&self, channel_id: u32) -> Option<usize> {
+    fn full_extranonce_size(&self, channel_id: u32) -> Option<usize> {
         if let Some(standard_miner) = self.standard_channels.get(&channel_id) {
-            return Some(standard_miner.full_extranonce_size().await);
+            return Some(standard_miner.full_extranonce_size());
         }
         if let Some(extended_miner) = self.extended_channels.get(&channel_id) {
-            return Some(extended_miner.full_extranonce_size().await);
+            return Some(extended_miner.full_extranonce_size());
         }
         None
     }
@@ -322,10 +322,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                 .get_mut(&set_extranonce_prefix.channel_id)
                 .expect("channel id must exist");
 
-            match standard_channel
-                .set_extranonce_prefix(extranonce_prefix)
-                .await
-            {
+            match standard_channel.set_extranonce_prefix(extranonce_prefix) {
                 Ok(()) => {
                     info!(
                         "updated standard channel with id: {}, new extranonce prefix: {}",
@@ -356,10 +353,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                     }
                 };
 
-            match extended_channel
-                .set_extranonce_prefix(extranonce_prefix)
-                .await
-            {
+            match extended_channel.set_extranonce_prefix(extranonce_prefix) {
                 Ok(()) => {
                     info!(
                         "updated extended channel with id: {}, new extranonce prefix: {}",
@@ -421,10 +415,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                 );
             }
             Some(standard_channel) => {
-                match standard_channel
-                    .on_new_mining_job(new_mining_job.clone())
-                    .await
-                {
+                match standard_channel.on_new_mining_job(new_mining_job.clone()) {
                     Ok(()) => {
                         info!(
                             "NewMiningJob processed: Standard Channel ID: {}, Job ID: {}",
@@ -470,10 +461,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                     );
                 }
                 Some(extended_miner) => {
-                    match extended_miner
-                        .on_new_extended_mining_job(new_extended_mining_job)
-                        .await
-                    {
+                    match extended_miner.on_new_extended_mining_job(new_extended_mining_job) {
                         Ok(()) => {
                             info!(
                                 "NewExtendedMiningJob processed: Extended Channel ID: {}, Job ID: {}",
@@ -496,10 +484,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
         let members: Vec<u32> = group.get_channel_ids().copied().collect();
         for member_id in members {
             if let Some(standard_miner) = self.standard_channels.get_mut(&member_id) {
-                match standard_miner
-                    .on_group_channel_job(new_extended_mining_job.clone())
-                    .await
-                {
+                match standard_miner.on_group_channel_job(new_extended_mining_job.clone()) {
                     Ok(()) => {
                         info!(
                             "NewExtendedMiningJob processed: Group Channel ID: {}, Standard Channel ID: {}, Job ID: {}",
@@ -514,10 +499,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                     }
                 }
             } else if let Some(extended_miner) = self.extended_channels.get_mut(&member_id) {
-                match extended_miner
-                    .on_new_extended_mining_job(new_extended_mining_job.clone())
-                    .await
-                {
+                match extended_miner.on_new_extended_mining_job(new_extended_mining_job.clone()) {
                     Ok(()) => {
                         info!(
                             "NewExtendedMiningJob processed: Group Channel ID: {}, Extended Channel ID: {}, Job ID: {}",
@@ -552,10 +534,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
 
         for channel_id in self.addressed_channels(set_new_prev_hash.channel_id) {
             if let Some(standard_miner) = self.standard_channels.get_mut(&channel_id) {
-                match standard_miner
-                    .on_set_new_prev_hash(set_new_prev_hash.clone())
-                    .await
-                {
+                match standard_miner.on_set_new_prev_hash(set_new_prev_hash.clone()) {
                     Ok(()) => {
                         info!(
                             "SetNewPrevHash processed: Standard Channel ID: {}, Job ID: {}",
@@ -570,10 +549,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                     }
                 }
             } else if let Some(extended_miner) = self.extended_channels.get_mut(&channel_id) {
-                match extended_miner
-                    .on_set_new_prev_hash(set_new_prev_hash.clone())
-                    .await
-                {
+                match extended_miner.on_set_new_prev_hash(set_new_prev_hash.clone()) {
                     Ok(()) => {
                         info!(
                             "SetNewPrevHash processed: Extended Channel ID: {}, Job ID: {}",
@@ -636,7 +612,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
 
         for channel_id in self.addressed_channels(set_target.channel_id) {
             if let Some(standard_miner) = self.standard_channels.get_mut(&channel_id) {
-                match standard_miner.set_target(target).await {
+                match standard_miner.set_target(target) {
                     Ok(()) => {
                         info!("SetTarget processed: Standard Channel ID: {}", channel_id);
                     }
@@ -648,7 +624,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
                     }
                 }
             } else if let Some(extended_miner) = self.extended_channels.get_mut(&channel_id) {
-                match extended_miner.set_target(target).await {
+                match extended_miner.set_target(target) {
                     Ok(()) => {
                         info!("SetTarget processed: Extended Channel ID: {}", channel_id);
                     }
@@ -698,7 +674,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
         // validate the whole redefinition before touching any group
         let mut redefined_group = GroupChannel::new(group_channel_id);
         for &channel_id in &channel_ids {
-            let Some(full_extranonce_size) = self.full_extranonce_size(channel_id).await else {
+            let Some(full_extranonce_size) = self.full_extranonce_size(channel_id) else {
                 error!(
                     "SetGroupChannel lists unknown Channel ID: {}, ignoring.",
                     channel_id
@@ -816,10 +792,8 @@ mod tests {
         (handler, receiver)
     }
 
-    async fn future_job_ids(handler: &ChannelManager, channel_id: u32) -> Vec<u32> {
-        let mut job_ids = handler.standard_channels[&channel_id]
-            .future_job_ids()
-            .await;
+    fn future_job_ids(handler: &ChannelManager, channel_id: u32) -> Vec<u32> {
+        let mut job_ids = handler.standard_channels[&channel_id].future_job_ids();
         job_ids.sort_unstable();
         job_ids
     }
@@ -837,9 +811,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(future_job_ids(&handler, 2).await, vec![10]);
-        assert_eq!(future_job_ids(&handler, 3).await, vec![10]);
-        assert_eq!(future_job_ids(&handler, 5).await, vec![40]);
+        assert_eq!(future_job_ids(&handler, 2), vec![10]);
+        assert_eq!(future_job_ids(&handler, 3), vec![10]);
+        assert_eq!(future_job_ids(&handler, 5), vec![40]);
     }
 
     #[tokio::test]
@@ -851,7 +825,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(future_job_ids(&handler, 2).await.is_empty());
+        assert!(future_job_ids(&handler, 2).is_empty());
     }
 
     #[tokio::test]
@@ -879,9 +853,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(future_job_ids(&handler, 2).await, vec![10]);
-        assert_eq!(future_job_ids(&handler, 3).await, vec![40]);
-        assert_eq!(future_job_ids(&handler, 5).await, vec![40]);
+        assert_eq!(future_job_ids(&handler, 2), vec![10]);
+        assert_eq!(future_job_ids(&handler, 3), vec![40]);
+        assert_eq!(future_job_ids(&handler, 5), vec![40]);
     }
 
     #[tokio::test]
@@ -904,7 +878,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(future_job_ids(&handler, 3).await, vec![10]);
+        assert_eq!(future_job_ids(&handler, 3), vec![10]);
         assert!(!handler.group_channels.contains_key(&2));
     }
 
@@ -952,6 +926,6 @@ mod tests {
                 .await,
             Err(Sv2CpuMinerError::StandardJobsOnly("NewExtendedMiningJob"))
         ));
-        assert!(future_job_ids(&handler, 2).await.is_empty());
+        assert!(future_job_ids(&handler, 2).is_empty());
     }
 }
