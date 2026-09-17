@@ -1,11 +1,5 @@
-mod client;
-mod config;
-mod error;
-mod handler;
-mod miner;
-
-use crate::client::Sv2CpuMiner;
-use crate::config::Sv2CpuMinerConfig;
+use sv2_cpu_miner::client::Sv2CpuMiner;
+use sv2_cpu_miner::config::Sv2CpuMinerConfig;
 
 use clap::Parser;
 use std::path::PathBuf;

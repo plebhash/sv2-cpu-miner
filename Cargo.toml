@@ -5,6 +5,9 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 
+[lib]
+path = "src/lib/mod.rs"
+
 [dependencies]
 stratum-apps = { git = "https://github.com/stratum-mining/sv2-apps", rev = "2792cf3d0aa1a109125d5230bec962a3ad41becc" }
 tokio = { version = "1", features = ["full", "tracing", "signal"] }
