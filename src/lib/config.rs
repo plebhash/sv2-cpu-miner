@@ -42,6 +42,12 @@ impl Sv2CpuMinerConfig {
             ));
         }
 
+        if self.n_standard_channels == 0 && self.n_extended_channels == 0 {
+            return Err(Sv2CpuMinerError::InvalidConfig(
+                "n_standard_channels and n_extended_channels cannot both be 0",
+            ));
+        }
+
         if self.requires_standard_jobs && self.n_extended_channels > 0 {
             return Err(Sv2CpuMinerError::InvalidConfig(
                 "n_extended_channels must be 0 when requires_standard_jobs is true",
@@ -98,6 +104,19 @@ mod tests {
         assert!(matches!(
             config.validate(),
             Err(Sv2CpuMinerError::InvalidConfig(msg)) if msg.contains("user_identity")
+        ));
+    }
+
+    #[test]
+    fn rejects_a_config_that_opens_no_channels() {
+        let config = Sv2CpuMinerConfig {
+            n_standard_channels: 0,
+            n_extended_channels: 0,
+            ..valid_config()
+        };
+        assert!(matches!(
+            config.validate(),
+            Err(Sv2CpuMinerError::InvalidConfig(msg)) if msg.contains("cannot both be 0")
         ));
     }
 
