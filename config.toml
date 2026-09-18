@@ -4,7 +4,7 @@ server_addr = "127.0.0.1:3333"
 # public key of the mining server
 auth_pk = "9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72"
 
-# how many Sv2 channels to open
+# how many Sv2 channels to open; at least one of the two must be greater than 0
 n_extended_channels = 2
 n_standard_channels = 2
 
@@ -27,7 +27,7 @@ single_submit = false
 cpu_usage_percent = 100
 
 # value to multiply the advertised nominal hashrate during channel opening
-# valid values: nominal_hashrate_multiplier >= 0.0
+# valid values: nominal_hashrate_multiplier > 0.0
 nominal_hashrate_multiplier = 1.0
 
 # optional path to a log file (logs always go to stdout too); -f/--log-file overrides it
