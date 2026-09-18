@@ -69,12 +69,12 @@ impl Sv2CpuMiner {
         self.perform_setup_connection_handshake(&upstream_sender, &upstream_receiver)
             .await?;
 
+        // validate() rules out a config that opens no channels, so this never divides by zero
+        let total_channels =
+            self.config.n_standard_channels as f32 + self.config.n_extended_channels as f32;
         let mut channel_manager = ChannelManager::new(
             self.config.user_identity.clone(),
-            self.nominal_hashrate,
-            self.config.nominal_hashrate_multiplier,
-            self.config.n_extended_channels,
-            self.config.n_standard_channels,
+            self.nominal_hashrate / total_channels,
             self.config.single_submit,
             self.config.cpu_usage_percent,
             self.config.requires_standard_jobs,
@@ -82,7 +82,13 @@ impl Sv2CpuMiner {
             self.cancellation_token.clone(),
         );
 
-        channel_manager.open_channels().await?;
+        channel_manager
+            .open_channels(
+                self.config.n_standard_channels,
+                self.config.n_extended_channels,
+                self.config.nominal_hashrate_multiplier,
+            )
+            .await?;
 
         loop {
             tokio::select! {

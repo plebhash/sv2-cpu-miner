@@ -141,7 +141,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
             self.user_identity.clone(),
             extranonce_prefix,
             Target::from_le_bytes(open_standard_mining_channel_success.target.to_array()),
-            self.nominal_hashrate / (self.n_standard_channels + self.n_extended_channels) as f32,
+            self.nominal_hashrate_per_channel,
             None,
         ) {
             Ok(standard_channel) => standard_channel,
@@ -206,7 +206,7 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
             self.user_identity.clone(),
             extranonce_prefix,
             Target::from_le_bytes(open_extended_mining_channel_success.target.to_array()),
-            self.nominal_hashrate / (self.n_standard_channels + self.n_extended_channels) as f32,
+            self.nominal_hashrate_per_channel,
             true,
             open_extended_mining_channel_success.extranonce_size,
             None,
@@ -738,9 +738,6 @@ mod tests {
         let handler = ChannelManager::new(
             "user".to_string(),
             1000.0,
-            1.0,
-            0,
-            3,
             false,
             100,
             requires_standard_jobs,
