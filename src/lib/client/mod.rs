@@ -46,6 +46,12 @@ impl Sv2CpuMiner {
         }
     }
 
+    /// The hashrate measured when this miner was built, before `nominal_hashrate_multiplier`
+    /// is applied.
+    pub fn nominal_hashrate(&self) -> f32 {
+        self.nominal_hashrate
+    }
+
     /// Connects, completes the handshake, opens the configured channels and handles frames
     /// until the mining server closes the connection or [`shutdown`](Self::shutdown) is called,
     /// both of which return `Ok`. Returns an error when connecting or the handshake fails, or
