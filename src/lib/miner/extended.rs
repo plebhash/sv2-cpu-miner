@@ -206,12 +206,13 @@ async fn mine_job(
     let version = active_job.job_message.version;
 
     let mut nonce = 0;
-    let mut ntime = active_job
+    let job_min_ntime = active_job
         .job_message
         .min_ntime
         .clone()
         .into_inner()
         .expect("only active jobs allowed");
+    let job_activated_at = std::time::Instant::now();
 
     // Time-based throttling: work for cpu_usage_percent ms, then sleep for (100-cpu_usage_percent)ms in CPU_THROTTLE_WINDOW_MS windows
     let work_duration_ms = cpu_usage_percent;
@@ -250,6 +251,12 @@ async fn mine_job(
                         window_start = std::time::Instant::now(); // Reset window
                     }
                 }
+
+                // A block header timestamp claims when the header was built, so it may only
+                // advance as real seconds pass.
+                let elapsed_seconds =
+                    u32::try_from(job_activated_at.elapsed().as_secs()).unwrap_or(u32::MAX);
+                let ntime = job_min_ntime.saturating_add(elapsed_seconds);
 
                 let header = Header {
                     version: Version::from_consensus(version as i32),
@@ -328,19 +335,9 @@ async fn mine_job(
                     }
                 }
 
-                nonce = match nonce.checked_add(1) {
-                    Some(nonce) => nonce,
-                    None => {
-                        ntime = match ntime.checked_add(1) {
-                            Some(ntime) => ntime,
-                            None => {
-                                error!("Both nonce and ntime overflowed");
-                                break;
-                            }
-                        };
-                        0
-                    }
-                };
+                // the search space is nonce by ntime, and ntime advances with the clock, so
+                // exhausting the nonce range just starts it again against a later timestamp
+                nonce = nonce.wrapping_add(1);
             }
         }
     }

@@ -862,3 +862,127 @@ async fn test_mining_client_shutdown_returns_ok() {
         .expect("the miner task must not panic");
     assert!(result.is_ok(), "start() returned {result:?}");
 }
+
+// A block header timestamp claims when the header was built, so a miner may only advance it as
+// real seconds pass: the Sv2 spec bounds a share's ntime at the job's min_ntime plus the seconds
+// elapsed since the message that activated it. Mining one static job for a few seconds must
+// therefore produce timestamps that move, but never ahead of the clock.
+#[tokio::test]
+async fn test_mining_client_advances_ntime_with_the_clock() {
+    start_tracing();
+
+    let mock_upstream_addr = get_available_address();
+    let mock_upstream_sender = MockUpstream::new(
+        mock_upstream_addr,
+        WithSetup::yes_with_defaults(Protocol::MiningProtocol, 0),
+    )
+    .start()
+    .await;
+    let (sniffer, sniffer_addr) = start_sniffer("", mock_upstream_addr, false, vec![], Some(10));
+
+    // Give sniffer time to initialize
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let config = Sv2CpuMinerConfig {
+        server_addr: sniffer_addr,
+        auth_pk: None,
+        n_extended_channels: 0,
+        n_standard_channels: 1,
+        requires_standard_jobs: true,
+        user_identity: "test".to_string(),
+        device_id: "test".to_string(),
+        single_submit: false,
+        cpu_usage_percent: 100,
+        nominal_hashrate_multiplier: 1.0,
+        log_file: None,
+    };
+
+    let client = Sv2CpuMiner::new(config).await;
+    let mut client_clone = client.clone();
+    tokio::spawn(async move {
+        client_clone.start().await.unwrap();
+    });
+
+    sniffer
+        .wait_for_message_type(
+            MessageDirection::ToUpstream,
+            MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL,
+        )
+        .await;
+
+    // about one share per 4096 hashes, a few dozen per second, so the window below spans
+    // several timestamps
+    let mut target = [0xff_u8; 32];
+    target[30] = 0x0f;
+    target[31] = 0;
+    mock_upstream_sender
+        .send(AnyMessageOwned::Mining(
+            MiningOwned::OpenStandardMiningChannelSuccess(OpenStandardMiningChannelSuccessOwned {
+                request_id: 0,
+                channel_id: 2,
+                target: target.into(),
+                extranonce_prefix: vec![0_u8; 8].try_into().unwrap(),
+                group_channel_id: 1,
+            }),
+        ))
+        .await
+        .unwrap();
+    mock_upstream_sender
+        .send(AnyMessageOwned::Mining(MiningOwned::NewMiningJob(
+            NewMiningJobOwned {
+                channel_id: 2,
+                job_id: 10,
+                min_ntime: Sv2OptionOwned::new(None),
+                version: 536870912,
+                merkle_root: [0_u8; 32].into(),
+            },
+        )))
+        .await
+        .unwrap();
+
+    // the job is activated by this message, so its min_ntime is what the miner rolls from and
+    // this instant bounds how far the miner's own clock can have advanced
+    let job_min_ntime = 1745596970_u32;
+    let activated_at = Instant::now();
+    mock_upstream_sender
+        .send(AnyMessageOwned::Mining(MiningOwned::SetNewPrevHash(
+            SetNewPrevHashOwned {
+                channel_id: 2,
+                job_id: 10,
+                prev_hash: [0_u8; 32].into(),
+                min_ntime: job_min_ntime,
+                nbits: 453040064,
+            },
+        )))
+        .await
+        .unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut ntimes = Vec::new();
+    while Instant::now() < deadline {
+        match sniffer.next_message_from_downstream() {
+            Some((_, AnyMessageOwned::Mining(MiningOwned::SubmitSharesStandard(share)))) => {
+                ntimes.push(share.ntime);
+            }
+            Some(_) => {}
+            None => tokio::time::sleep(Duration::from_millis(50)).await,
+        }
+    }
+    let elapsed_seconds = activated_at.elapsed().as_secs() as u32;
+
+    assert!(!ntimes.is_empty(), "no share was submitted");
+    assert!(
+        ntimes.iter().all(|&ntime| ntime >= job_min_ntime),
+        "a share predates the job it references: {ntimes:?}"
+    );
+    assert!(
+        ntimes
+            .iter()
+            .all(|&ntime| ntime <= job_min_ntime + elapsed_seconds),
+        "ntime ran ahead of the clock after {elapsed_seconds}s: {ntimes:?}"
+    );
+    assert!(
+        ntimes.iter().any(|&ntime| ntime > job_min_ntime),
+        "ntime never advanced although seconds passed: {ntimes:?}"
+    );
+}
