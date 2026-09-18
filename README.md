@@ -1,16 +1,12 @@
 # Sv2 CPU Miner
 
-A Stratum V2 (Sv2) CPU miner implementation based on:
-- [`stratum`](https://github.com/stratum-mining/stratum)
-- [`sv2-apps`](https://github.com/stratum-mining/sv2-apps) (via the `stratum-apps` crate)
-- [`tokio`](https://tokio.rs)
-
 ## Features
 
 - **Stratum V2 Protocol**: Support for the Stratum V2 mining protocol
-- **CPU Throttling**: Configurable CPU usage (1-100%) to prevent system overload
-- **Multi Channel Support**: Able to open multiple Standard and/or Extended Sv2 Channels
+- **Multi Channel Support**: Able to open multiple Standard and/or Extended Sv2 Channels (with optional `REQUIRES_STANDARD_JOBS` flag)
+- **Group Channel Support**: Correctly routes work across multiple Group Channels on one connection, including regrouping via SetGroupChannel
 - **Single Submit Mode**: Option to stop mining after first share submission on each Sv2 Channel
+- **CPU Throttling**: Configurable CPU usage (1-100%) to prevent system overload
 - **Nominal Hashrate Modification**: Option to modify the nominal hashrate on Sv2 Channel opening (useful to test vardiff on server side)
 - **Graceful Shutdown**: Proper cleanup on termination signals (e.g.: Ctrl+C, server disconnect)
 
