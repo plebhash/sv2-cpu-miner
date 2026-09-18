@@ -105,4 +105,10 @@ async fn test_mining_client_mixed_channels() {
             MESSAGE_TYPE_SUBMIT_SHARES_EXTENDED,
         )
         .await;
+    sniffer
+        .wait_for_message_type(
+            MessageDirection::ToDownstream,
+            MESSAGE_TYPE_SUBMIT_SHARES_SUCCESS,
+        )
+        .await;
 }
