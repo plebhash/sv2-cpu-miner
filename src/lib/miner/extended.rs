@@ -317,6 +317,7 @@ async fn mine_job(
                                     if let Some(ref single_submit_cancellation_token) = single_submit_cancellation_token {
                                         info!("Single submit enabled, cancelling miner task");
                                         single_submit_cancellation_token.cancel();
+                                        break;
                                     }
                                 }
                                 Err(e) => {
