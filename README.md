@@ -1,5 +1,9 @@
 # Sv2 CPU Miner
 
+A Sv2 Spec-compliant CPU miner designed as a swiss-army knife for testing.
+
+It is meant to be used not only as a Sv2 Mining Device, but as a generic Sv2 Mining Protocol Client. Essentially, it can emulate a Sv2 Proxy from the perspective of the Sv2 Mining Protocol Server.
+
 ## Features
 
 - **Stratum V2 Protocol**: Support for the Stratum V2 mining protocol
@@ -15,6 +19,8 @@
 This is intented to serve as a Sv2 protocol-compliant testing toolkit. 
 
 It is not optimized for performance, as the hashrate is bound to the tokio runtime.
+
+Therefore, optimizing hashrate is out of scope, and bounded/low hashrate is a known limitation.
 
 ## Instructions
 
