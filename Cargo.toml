@@ -21,7 +21,8 @@ async-channel = "1.5.1"
 integration_tests_sv2 = { git = "https://github.com/stratum-mining/sv2-apps", rev = "2792cf3d0aa1a109125d5230bec962a3ad41becc" }
 
 # cpu_miner_sv2 needs SupportedChannelTypes::StandardAndExtended, which is not yet on
-# stratum main. Point at the feature branch on the plebhash fork; drop this section and
-# re-pin via Cargo.lock once the upstream PR merges.
+# stratum main; see https://github.com/stratum-mining/stratum/issues/2393. Point at the
+# feature branch on the plebhash fork; drop this section and re-pin via Cargo.lock once the
+# upstream PR merges.
 [patch."https://github.com/stratum-mining/stratum"]
 stratum-core = { git = "https://github.com/plebhash/stratum", branch = "2026-09-16-standard-and-extended-channel-type" }
