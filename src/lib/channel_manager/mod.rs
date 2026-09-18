@@ -34,9 +34,6 @@ pub struct ChannelManager {
     requires_standard_jobs: bool,
     extended_channels: HashMap<u32, ExtendedChannelMiner>,
     standard_channels: HashMap<u32, StandardChannelMiner>,
-    // every channel belongs to a group (spec 5.2.3); a server may run several groups on one
-    // connection and redefine them with SetGroupChannel, so membership is tracked per group id
-    // and server messages addressed to a group id fan out to that group's members only
     group_channels: HashMap<u32, GroupChannel>,
     upstream_sender: async_channel::Sender<OutboundFrame>,
     cancellation_token: CancellationToken,
