@@ -8,7 +8,7 @@ It is meant to be used not only as a Sv2 Mining Device, but as a generic Sv2 Min
 
 - **Stratum V2 Protocol**: Support for the Stratum V2 mining protocol
 - **Multi Channel Support**: Able to open multiple Standard and/or Extended Sv2 Channels (with optional `REQUIRES_STANDARD_JOBS` flag)
-- **Group Channel Support**: Correctly routes work across multiple Group Channels on one connection, including regrouping via SetGroupChannel
+- **Group Channel Support**: Correctly routes work across multiple Group Channels on one connection, including regrouping via `SetGroupChannel` message
 - **Flexible UX**: Configurable via TOML file and/or `CPU_MINER__*` environment variables, with `RUST_LOG` verbosity control and optional logging to a file
 - **Single Submit Mode**: Option to stop mining after first share submission on each Sv2 Channel
 - **CPU Throttling**: Configurable CPU usage (1-100%) to prevent system overload
