@@ -392,6 +392,43 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
         _tlv_fields: Option<&[Tlv]>,
     ) -> Result<(), Self::Error> {
         info!("received SubmitShares.Success: {}", submit_shares_success);
+
+        let channel_id = submit_shares_success.channel_id;
+        let acknowledgement =
+            if let Some(standard_channel) = self.standard_channels.get_mut(&channel_id) {
+                Some(standard_channel.on_share_acknowledgement(
+                    submit_shares_success.new_submits_accepted_count,
+                    submit_shares_success.new_shares_sum,
+                ))
+            } else if let Some(extended_channel) = self.extended_channels.get_mut(&channel_id) {
+                Some(extended_channel.on_share_acknowledgement(
+                    submit_shares_success.new_submits_accepted_count,
+                    submit_shares_success.new_shares_sum,
+                ))
+            } else {
+                error!(
+                    "Channel with ID: {} not found, ignoring SubmitShares.Success.",
+                    channel_id
+                );
+                None
+            };
+
+        match acknowledgement {
+            Some(Ok((acknowledged_shares, acknowledged_work_sum))) => {
+                info!(
+                    "share accounting updated: Channel ID: {}, acknowledged shares: {}, acknowledged work sum: {}",
+                    channel_id, acknowledged_shares, acknowledged_work_sum
+                );
+            }
+            Some(Err(e)) => {
+                error!(
+                    "failed to update share accounting for Channel ID: {}, error: {:?}",
+                    channel_id, e
+                );
+            }
+            None => {}
+        }
+
         Ok(())
     }
 
@@ -402,6 +439,38 @@ impl HandleMiningMessagesFromServerOwnedAsync for ChannelManager {
         _tlv_fields: Option<&[Tlv]>,
     ) -> Result<(), Self::Error> {
         info!("received SubmitShares.Error: {}", submit_shares_error);
+
+        let channel_id = submit_shares_error.channel_id;
+        let error_code = submit_shares_error.error_code.as_utf8_or_hex();
+        let rejection = if let Some(standard_channel) = self.standard_channels.get_mut(&channel_id)
+        {
+            Some(standard_channel.on_share_rejection(&error_code))
+        } else if let Some(extended_channel) = self.extended_channels.get_mut(&channel_id) {
+            Some(extended_channel.on_share_rejection(&error_code))
+        } else {
+            error!(
+                "Channel with ID: {} not found, ignoring SubmitShares.Error.",
+                channel_id
+            );
+            None
+        };
+
+        match rejection {
+            Some(Ok(rejected_shares)) => {
+                info!(
+                    "share accounting updated: Channel ID: {}, rejected shares: {}",
+                    channel_id, rejected_shares
+                );
+            }
+            Some(Err(e)) => {
+                error!(
+                    "failed to update share accounting for Channel ID: {}, error: {:?}",
+                    channel_id, e
+                );
+            }
+            None => {}
+        }
+
         Ok(())
     }
 
@@ -811,6 +880,48 @@ mod tests {
             .unwrap();
         job_ids.sort_unstable();
         job_ids
+    }
+
+    /// (acknowledged shares, rejected shares) of a standard channel.
+    fn share_accounting_totals(handler: &ChannelManager, channel_id: u32) -> (u32, u32) {
+        handler.standard_channels[&channel_id]
+            .share_accounting_totals()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn submit_shares_verdicts_update_the_channel_accounting() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        handler
+            .handle_submit_shares_success(
+                None,
+                SubmitSharesSuccessOwned {
+                    channel_id: 2,
+                    last_sequence_number: 1,
+                    new_submits_accepted_count: 2,
+                    new_shares_sum: 2,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        handler
+            .handle_submit_shares_error(
+                None,
+                SubmitSharesErrorOwned {
+                    channel_id: 3,
+                    sequence_number: 1,
+                    error_code: "difficulty-too-low".to_string().try_into().unwrap(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(share_accounting_totals(&handler, 2), (2, 0));
+        assert_eq!(share_accounting_totals(&handler, 3), (0, 1));
+        assert_eq!(share_accounting_totals(&handler, 5), (0, 0));
     }
 
     #[tokio::test]

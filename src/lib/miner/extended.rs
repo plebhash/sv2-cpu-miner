@@ -161,6 +161,32 @@ impl ExtendedChannelMiner {
             .write(|channel| channel.set_target(target))??;
         Ok(())
     }
+
+    /// Records a `SubmitShares.Success` batch on the channel's share accounting.
+    /// Returns the updated totals: (acknowledged shares, acknowledged work sum).
+    pub fn on_share_acknowledgement(
+        &mut self,
+        new_submits_accepted_count: u32,
+        new_shares_sum: u64,
+    ) -> Result<(u32, u64), Sv2CpuMinerError> {
+        Ok(self.extended_channel.write(|channel| {
+            channel.on_share_acknowledgement(new_submits_accepted_count, new_shares_sum);
+            let share_accounting = channel.get_share_accounting();
+            (
+                share_accounting.get_acknowledged_shares(),
+                share_accounting.get_acknowledged_work_sum(),
+            )
+        })?)
+    }
+
+    /// Records a `SubmitShares.Error` on the channel's share accounting.
+    /// Returns the updated total of rejected shares.
+    pub fn on_share_rejection(&mut self, error_code: &str) -> Result<u32, Sv2CpuMinerError> {
+        Ok(self.extended_channel.write(|channel| {
+            channel.on_share_rejection(error_code);
+            channel.get_share_accounting().get_rejected_shares_count()
+        })?)
+    }
 }
 
 /// Hashes the channel's active job, rolling nonce and ntime, until cancelled. Works for
