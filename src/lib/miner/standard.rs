@@ -76,6 +76,17 @@ impl StandardChannelMiner {
         })?)
     }
 
+    #[cfg(test)]
+    pub fn share_accounting_totals(&self) -> Result<(u32, u32), Sv2CpuMinerError> {
+        Ok(self.standard_channel.read(|channel| {
+            let share_accounting = channel.get_share_accounting();
+            (
+                share_accounting.get_acknowledged_shares(),
+                share_accounting.get_rejected_shares_count(),
+            )
+        })?)
+    }
+
     pub fn set_extranonce_prefix(
         &mut self,
         extranonce_prefix: ExtranoncePrefix,
@@ -169,6 +180,32 @@ impl StandardChannelMiner {
         self.standard_channel
             .write(|channel| channel.set_target(target))??;
         Ok(())
+    }
+
+    /// Records a `SubmitShares.Success` batch on the channel's share accounting.
+    /// Returns the updated totals: (acknowledged shares, acknowledged work sum).
+    pub fn on_share_acknowledgement(
+        &mut self,
+        new_submits_accepted_count: u32,
+        new_shares_sum: u64,
+    ) -> Result<(u32, u64), Sv2CpuMinerError> {
+        Ok(self.standard_channel.write(|channel| {
+            channel.on_share_acknowledgement(new_submits_accepted_count, new_shares_sum);
+            let share_accounting = channel.get_share_accounting();
+            (
+                share_accounting.get_acknowledged_shares(),
+                share_accounting.get_acknowledged_work_sum(),
+            )
+        })?)
+    }
+
+    /// Records a `SubmitShares.Error` on the channel's share accounting.
+    /// Returns the updated total of rejected shares.
+    pub fn on_share_rejection(&mut self, error_code: &str) -> Result<u32, Sv2CpuMinerError> {
+        Ok(self.standard_channel.write(|channel| {
+            channel.on_share_rejection(error_code);
+            channel.get_share_accounting().get_rejected_shares_count()
+        })?)
     }
 }
 
