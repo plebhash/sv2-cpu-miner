@@ -1,6 +1,6 @@
 # Sv2 CPU Miner
 
-A Sv2 Spec-compliant CPU miner designed as a swiss-army knife for testing.
+A [Sv2 Spec](https://github.com/stratum-mining/sv2-spec)-compliant CPU miner designed as a swiss-army knife for testing.
 
 It is meant to be used not only as a Sv2 Mining Device, but as a generic Sv2 Mining Protocol Client. Essentially, it can emulate a Sv2 Proxy from the perspective of the Sv2 Mining Protocol Server.
 
