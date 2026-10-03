@@ -1076,6 +1076,46 @@ mod tests {
         );
     }
 
+    // every member of a group must share the same full extranonce size (spec 5.2.3)
+    #[tokio::test]
+    async fn channel_with_a_different_full_extranonce_size_cannot_join_a_group() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        handler
+            .handle_open_standard_mining_channel_success(
+                None,
+                OpenStandardMiningChannelSuccessOwned {
+                    extranonce_prefix: vec![0_u8; 16].try_into().unwrap(),
+                    ..open_standard_success(6, 1)
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert!(!handler.standard_channels.contains_key(&6));
+        let mut group_members: Vec<u32> = handler.group_channels[&1]
+            .get_channel_ids()
+            .copied()
+            .collect();
+        group_members.sort_unstable();
+        assert_eq!(group_members, vec![2, 3]);
+    }
+
+    // group and channel ids share one namespace per connection (spec 5.2.3)
+    #[tokio::test]
+    async fn channel_whose_group_id_is_an_open_channel_id_is_refused() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        handler
+            .handle_open_standard_mining_channel_success(None, open_standard_success(6, 2), None)
+            .await
+            .unwrap();
+
+        assert!(!handler.standard_channels.contains_key(&6));
+        assert!(!handler.group_channels.contains_key(&2));
+    }
+
     #[tokio::test]
     async fn extended_job_on_a_standard_jobs_connection_is_fatal() {
         let (mut handler, _receiver) = handler(true);
