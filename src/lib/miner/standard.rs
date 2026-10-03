@@ -77,6 +77,13 @@ impl StandardChannelMiner {
     }
 
     #[cfg(test)]
+    pub fn extranonce_prefix(&self) -> Result<Vec<u8>, Sv2CpuMinerError> {
+        Ok(self
+            .standard_channel
+            .read(|channel| channel.get_extranonce_prefix().to_vec())?)
+    }
+
+    #[cfg(test)]
     pub fn share_accounting_totals(&self) -> Result<(u32, u32), Sv2CpuMinerError> {
         Ok(self.standard_channel.read(|channel| {
             let share_accounting = channel.get_share_accounting();

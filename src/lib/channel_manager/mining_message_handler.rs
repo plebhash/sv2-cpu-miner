@@ -1116,6 +1116,53 @@ mod tests {
         assert!(!handler.group_channels.contains_key(&2));
     }
 
+    // SetExtranoncePrefix applies to one channel; addressed to a group it must be ignored
+    // (spec 5.3.10)
+    #[tokio::test]
+    async fn set_extranonce_prefix_addressed_to_a_group_is_ignored() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        handler
+            .handle_set_extranonce_prefix(
+                None,
+                SetExtranoncePrefixOwned {
+                    channel_id: 1,
+                    extranonce_prefix: vec![1_u8; 32].try_into().unwrap(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        for channel_id in [2, 3] {
+            assert_eq!(
+                handler.standard_channels[&channel_id]
+                    .extranonce_prefix()
+                    .unwrap(),
+                vec![0_u8; 32]
+            );
+        }
+
+        handler
+            .handle_set_extranonce_prefix(
+                None,
+                SetExtranoncePrefixOwned {
+                    channel_id: 2,
+                    extranonce_prefix: vec![1_u8; 32].try_into().unwrap(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            handler.standard_channels[&2].extranonce_prefix().unwrap(),
+            vec![1_u8; 32]
+        );
+        assert_eq!(
+            handler.standard_channels[&3].extranonce_prefix().unwrap(),
+            vec![0_u8; 32]
+        );
+    }
+
     #[tokio::test]
     async fn extended_job_on_a_standard_jobs_connection_is_fatal() {
         let (mut handler, _receiver) = handler(true);
