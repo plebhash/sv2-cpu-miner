@@ -1039,6 +1039,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn close_channel_addressed_to_a_channel_closes_only_that_channel() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        for channel_id in [2, 5] {
+            handler
+                .handle_close_channel(
+                    None,
+                    CloseChannelOwned {
+                        channel_id,
+                        reason_code: "test".to_string().try_into().unwrap(),
+                    },
+                    None,
+                )
+                .await
+                .unwrap();
+        }
+        handler
+            .handle_new_extended_mining_job(None, group_job(1, 10), None)
+            .await
+            .unwrap();
+
+        // channel 3 still mines for group 1; group 4 lost its only member and is gone
+        assert_eq!(
+            handler
+                .standard_channels
+                .keys()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![3]
+        );
+        assert_eq!(future_job_ids(&handler, 3), vec![10]);
+        assert_eq!(
+            handler.group_channels.keys().copied().collect::<Vec<_>>(),
+            vec![1]
+        );
+    }
+
+    #[tokio::test]
     async fn extended_job_on_a_standard_jobs_connection_is_fatal() {
         let (mut handler, _receiver) = handler(true);
         handler
