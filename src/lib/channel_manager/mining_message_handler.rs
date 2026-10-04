@@ -1191,6 +1191,73 @@ mod tests {
         assert_eq!(handler.standard_channels[&5].target().unwrap(), opened_with);
     }
 
+    // a redefinition listing a channel that is not open cannot be honoured, so the whole
+    // SetGroupChannel is dropped and the existing groups stay as they were
+    #[tokio::test]
+    async fn set_group_channel_listing_an_unknown_channel_is_ignored() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        handler
+            .handle_set_group_channel(
+                None,
+                SetGroupChannelOwned {
+                    group_channel_id: 7,
+                    channel_ids: vec![2, 9].try_into().unwrap(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        handler
+            .handle_new_extended_mining_job(None, group_job(1, 10), None)
+            .await
+            .unwrap();
+
+        assert!(!handler.group_channels.contains_key(&7));
+        // channel 2 never left group 1
+        assert_eq!(future_job_ids(&handler, 2), vec![10]);
+    }
+
+    // every member of a group must share the full extranonce size (spec 5.2.3), so a
+    // redefinition that would mix sizes is dropped whole
+    #[tokio::test]
+    async fn set_group_channel_mixing_full_extranonce_sizes_is_ignored() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+        // channel 7 in group 6, with a 16-byte prefix unlike the fixture's 32 bytes
+        handler
+            .handle_open_standard_mining_channel_success(
+                None,
+                OpenStandardMiningChannelSuccessOwned {
+                    extranonce_prefix: vec![0_u8; 16].try_into().unwrap(),
+                    ..open_standard_success(7, 6)
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        handler
+            .handle_set_group_channel(
+                None,
+                SetGroupChannelOwned {
+                    group_channel_id: 8,
+                    channel_ids: vec![2, 7].try_into().unwrap(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        handler
+            .handle_new_extended_mining_job(None, group_job(1, 10), None)
+            .await
+            .unwrap();
+
+        assert!(!handler.group_channels.contains_key(&8));
+        // channel 2 never left group 1, and channel 7's group survived
+        assert_eq!(future_job_ids(&handler, 2), vec![10]);
+        assert!(handler.group_channels.contains_key(&6));
+    }
+
     #[tokio::test]
     async fn extended_job_on_a_standard_jobs_connection_is_fatal() {
         let (mut handler, _receiver) = handler(true);
