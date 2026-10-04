@@ -449,6 +449,76 @@ mod tests {
         (miner, receiver)
     }
 
+    // A coinbase that parses once the channel's 32-byte extranonce prefix is inserted, so the
+    // channel can derive its own job from a group job. The bytes come from the channels_sv2
+    // client tests.
+    const COINBASE_TX_PREFIX: &[u8] = &[
+        2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 34, 82, 0,
+    ];
+    const COINBASE_TX_SUFFIX: &[u8] = &[
+        255, 255, 255, 255, 2, 0, 242, 5, 42, 1, 0, 0, 0, 22, 0, 20, 235, 225, 183, 220, 194, 147,
+        204, 170, 14, 231, 67, 168, 111, 137, 223, 130, 88, 194, 8, 252, 0, 0, 0, 0, 0, 0, 0, 0,
+        38, 106, 36, 170, 33, 169, 237, 226, 246, 28, 63, 113, 209, 222, 253, 63, 169, 153, 223,
+        163, 105, 83, 117, 92, 105, 6, 137, 121, 153, 98, 180, 139, 235, 216, 54, 151, 78, 140,
+        249, 0, 0, 0, 0,
+    ];
+
+    /// A NewMiningJob that carries a min_ntime is already active (sv2-spec 5.3.15), so mining
+    /// must restart on it at once instead of waiting for a SetNewPrevHash.
+    #[tokio::test]
+    async fn a_job_that_arrives_active_restarts_mining_at_once() {
+        let (mut miner, _receiver) = miner_with_active_job(Target::from_le_bytes([0xff; 32]));
+        let job_1_mining_task_token = miner.miner_cancellation_token.clone();
+
+        miner
+            .on_new_mining_job(NewMiningJobOwned {
+                channel_id: 1,
+                job_id: 2,
+                min_ntime: Sv2OptionOwned::new(Some(1745596980)),
+                version: 536870912,
+                merkle_root: [0u8; 32].into(),
+            })
+            .unwrap();
+
+        assert!(
+            job_1_mining_task_token.is_cancelled(),
+            "the mining task of job 1 kept running"
+        );
+        assert!(!miner.miner_cancellation_token.is_cancelled());
+        assert_eq!(miner.active_job_id().unwrap(), Some(2));
+        miner.miner_cancellation_token.cancel();
+    }
+
+    /// The same rule for a group job (sv2-spec 5.3.16): when it carries a min_ntime, the
+    /// standard channel derives its own job from it and mining must restart at once.
+    #[tokio::test]
+    async fn a_group_job_that_arrives_active_restarts_mining_at_once() {
+        let (mut miner, _receiver) = miner_with_active_job(Target::from_le_bytes([0xff; 32]));
+        let job_1_mining_task_token = miner.miner_cancellation_token.clone();
+
+        miner
+            .on_group_channel_job(NewExtendedMiningJobOwned {
+                channel_id: 1,
+                job_id: 2,
+                min_ntime: Sv2OptionOwned::new(Some(1745596980)),
+                version: 536870912,
+                version_rolling_allowed: true,
+                merkle_path: vec![].try_into().unwrap(),
+                coinbase_tx_prefix: COINBASE_TX_PREFIX.to_vec().try_into().unwrap(),
+                coinbase_tx_suffix: COINBASE_TX_SUFFIX.to_vec().try_into().unwrap(),
+            })
+            .unwrap();
+
+        assert!(
+            job_1_mining_task_token.is_cancelled(),
+            "the mining task of job 1 kept running"
+        );
+        assert!(!miner.miner_cancellation_token.is_cancelled());
+        assert_eq!(miner.active_job_id().unwrap(), Some(2));
+        miner.miner_cancellation_token.cancel();
+    }
+
     #[tokio::test]
     async fn shares_the_channel_accepts_are_submitted() {
         let (miner, receiver) = miner_with_active_job(Target::from_le_bytes([0xff; 32]));

@@ -390,18 +390,16 @@ mod tests {
         249, 0, 0, 0, 0,
     ];
 
-    /// The miner's pre-check uses the channel target, relaxed here after the job became active,
-    /// so it finds "shares" at once; the job keeps its unreachable target, so the channel rejects
-    /// every one of them and none may be submitted.
-    #[tokio::test]
-    async fn shares_the_channel_rejects_are_not_submitted() {
-        let mut unreachable = [0u8; 32];
-        unreachable[0] = 1;
+    /// A miner whose job 1 is active under `channel_target`, with the mining task spawned but
+    /// not yet started: a current-thread runtime only runs it once the test awaits.
+    fn miner_with_active_job(
+        channel_target: Target,
+    ) -> (ExtendedChannelMiner, async_channel::Receiver<OutboundFrame>) {
         let channel = ExtendedChannel::new(
             1,
             "user".to_string(),
             ExtranoncePrefix::from_wire(vec![0; 28]).unwrap(),
-            Target::from_le_bytes(unreachable),
+            channel_target,
             1.0,
             true,
             4,
@@ -437,6 +435,45 @@ mod tests {
                 min_ntime: 1745596970,
             })
             .unwrap();
+        (miner, receiver)
+    }
+
+    /// A NewExtendedMiningJob that carries a min_ntime is already active (sv2-spec 5.3.16), so
+    /// mining must restart on it at once instead of waiting for a SetNewPrevHash.
+    #[tokio::test]
+    async fn a_job_that_arrives_active_restarts_mining_at_once() {
+        let (mut miner, _receiver) = miner_with_active_job(Target::from_le_bytes([0xff; 32]));
+        let job_1_mining_task_token = miner.miner_cancellation_token.clone();
+
+        miner
+            .on_new_extended_mining_job(NewExtendedMiningJobOwned {
+                channel_id: 1,
+                job_id: 2,
+                min_ntime: Sv2OptionOwned::new(Some(1745596980)),
+                version: 536870912,
+                version_rolling_allowed: true,
+                merkle_path: vec![].try_into().unwrap(),
+                coinbase_tx_prefix: COINBASE_TX_PREFIX.to_vec().try_into().unwrap(),
+                coinbase_tx_suffix: COINBASE_TX_SUFFIX.to_vec().try_into().unwrap(),
+            })
+            .unwrap();
+
+        assert!(
+            job_1_mining_task_token.is_cancelled(),
+            "the mining task of job 1 kept running"
+        );
+        assert!(!miner.miner_cancellation_token.is_cancelled());
+        miner.miner_cancellation_token.cancel();
+    }
+
+    /// The miner's pre-check uses the channel target, relaxed here after the job became active,
+    /// so it finds "shares" at once; the job keeps its unreachable target, so the channel rejects
+    /// every one of them and none may be submitted.
+    #[tokio::test]
+    async fn shares_the_channel_rejects_are_not_submitted() {
+        let mut unreachable = [0u8; 32];
+        unreachable[0] = 1;
+        let (mut miner, receiver) = miner_with_active_job(Target::from_le_bytes(unreachable));
         miner.set_target(Target::from_le_bytes([0xff; 32])).unwrap();
 
         assert!(
