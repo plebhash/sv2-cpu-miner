@@ -57,7 +57,7 @@ impl Sv2CpuMiner {
     /// both of which return `Ok`. Returns an error when connecting or the handshake fails, or
     /// when the mining server violates the protocol.
     pub async fn start(&mut self) -> Result<(), Sv2CpuMinerError> {
-        let socket = TcpStream::connect(self.config.server_addr).await?;
+        let socket = TcpStream::connect(self.config.server_addr.as_str()).await?;
         let initiator = Initiator::new(self.config.auth_pk.as_ref().map(|k| k.0));
         let (upstream_receiver, upstream_sender) = Connection::connect::<OutboundFrame>(
             socket,
@@ -136,19 +136,17 @@ impl Sv2CpuMiner {
             0b000_u32
         };
 
+        let (endpoint_host, endpoint_port) = self.config.server_host_and_port()?;
         let setup_connection = SetupConnectionOwned {
             protocol: Protocol::MiningProtocol,
             min_version: SUPPORTED_PROTOCOL_VERSION,
             max_version: SUPPORTED_PROTOCOL_VERSION,
             flags,
-            endpoint_host: self
-                .config
-                .server_addr
-                .ip()
+            endpoint_host: endpoint_host
                 .to_string()
                 .try_into()
-                .expect("host must fit in Str0255"),
-            endpoint_port: self.config.server_addr.port(),
+                .expect("host length checked at config load"),
+            endpoint_port,
             vendor: "".try_into().expect("empty string is valid Str0255"),
             hardware_version: "".try_into().expect("empty string is valid Str0255"),
             firmware: "".try_into().expect("empty string is valid Str0255"),

@@ -108,7 +108,7 @@ mod tests {
     fn miner(n_standard_channels: u8) -> Sv2CpuMiner {
         Sv2CpuMiner {
             config: Sv2CpuMinerConfig {
-                server_addr: "127.0.0.1:3333".parse().unwrap(),
+                server_addr: "127.0.0.1:3333".to_string(),
                 auth_pk: None,
                 n_extended_channels: 0,
                 n_standard_channels,

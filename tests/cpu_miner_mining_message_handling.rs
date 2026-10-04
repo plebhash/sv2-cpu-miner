@@ -51,7 +51,7 @@ async fn test_mining_client_group_job_reaches_only_its_members() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: sniffer_addr,
+        server_addr: sniffer_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 2,
@@ -172,7 +172,7 @@ async fn test_mining_client_set_group_channel_regroups() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: sniffer_addr,
+        server_addr: sniffer_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 2,
@@ -312,7 +312,7 @@ async fn test_mining_client_refuses_an_extended_job_when_standard_jobs_are_requi
         .unwrap();
 
     let config = Sv2CpuMinerConfig {
-        server_addr: mock_upstream_addr,
+        server_addr: mock_upstream_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 1,
@@ -361,7 +361,7 @@ async fn test_mining_client_refuses_set_group_channel_when_standard_jobs_are_req
         .unwrap();
 
     let config = Sv2CpuMinerConfig {
-        server_addr: mock_upstream_addr,
+        server_addr: mock_upstream_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 1,
@@ -410,7 +410,7 @@ async fn test_mining_client_open_channel_error_keeps_running() {
         .unwrap();
 
     let config = Sv2CpuMinerConfig {
-        server_addr: mock_upstream_addr,
+        server_addr: mock_upstream_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 1,

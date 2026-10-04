@@ -31,7 +31,7 @@ async fn test_mining_client_setup_connection_error() {
     .await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: mock_upstream_addr,
+        server_addr: mock_upstream_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 1,
@@ -68,7 +68,7 @@ async fn test_mining_client_rejects_undefined_flags() {
     .await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: mock_upstream_addr,
+        server_addr: mock_upstream_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 1,
@@ -106,7 +106,7 @@ async fn test_mining_client_rejects_required_extended_channels_with_standard_cha
     .await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: mock_upstream_addr,
+        server_addr: mock_upstream_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 1,
@@ -153,7 +153,7 @@ async fn test_mining_client_rejects_a_first_reply_that_is_not_a_setup_connection
         .unwrap();
 
     let config = Sv2CpuMinerConfig {
-        server_addr: mock_upstream_addr,
+        server_addr: mock_upstream_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 1,
@@ -217,7 +217,7 @@ async fn test_mining_client_rejects_a_version_that_was_not_offered() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: sniffer_addr,
+        server_addr: sniffer_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 1,

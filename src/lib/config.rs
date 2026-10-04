@@ -3,7 +3,6 @@
 
 use crate::error::Sv2CpuMinerError;
 use serde::Deserialize;
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use stratum_apps::config_helpers::opt_path_from_toml;
 use stratum_apps::key_utils::Secp256k1PublicKey;
@@ -11,7 +10,7 @@ use stratum_apps::key_utils::Secp256k1PublicKey;
 /// One run's configuration; see the example `config.toml` for the meaning of each field.
 #[derive(Clone, Deserialize)]
 pub struct Sv2CpuMinerConfig {
-    pub server_addr: SocketAddr,
+    pub server_addr: String,
     pub auth_pk: Option<Secp256k1PublicKey>,
     pub n_extended_channels: u8,
     pub n_standard_channels: u8,
@@ -27,9 +26,31 @@ pub struct Sv2CpuMinerConfig {
 }
 
 impl Sv2CpuMinerConfig {
+    /// Splits `server_addr` into its host and port. The host may be a DNS name, an IPv4
+    /// address, or a bracketed IPv6 address; the brackets are stripped from the result.
+    pub fn server_host_and_port(&self) -> Result<(&str, u16), Sv2CpuMinerError> {
+        let (host, port) =
+            self.server_addr
+                .rsplit_once(':')
+                .ok_or(Sv2CpuMinerError::InvalidConfig(
+                    "server_addr must be in host:port form",
+                ))?;
+        let port = port.parse().map_err(|_| {
+            Sv2CpuMinerError::InvalidConfig("server_addr port must be a number between 0 and 65535")
+        })?;
+        Ok((host.trim_start_matches('[').trim_end_matches(']'), port))
+    }
+
     /// Checks the invariants the rest of the miner relies on, such as the Str0255 fields
     /// fitting their SV2 wire type.
     pub fn validate(&self) -> Result<(), Sv2CpuMinerError> {
+        let (host, _) = self.server_host_and_port()?;
+        if host.is_empty() || host.len() > 255 {
+            return Err(Sv2CpuMinerError::InvalidConfig(
+                "server_addr host must be between 1 and 255 bytes",
+            ));
+        }
+
         if self.nominal_hashrate_multiplier <= 0.0 {
             return Err(Sv2CpuMinerError::InvalidConfig(
                 "nominal_hashrate_multiplier must be greater than 0.0",
@@ -76,7 +97,7 @@ mod tests {
 
     fn valid_config() -> Sv2CpuMinerConfig {
         Sv2CpuMinerConfig {
-            server_addr: "127.0.0.1:3333".parse().unwrap(),
+            server_addr: "127.0.0.1:3333".to_string(),
             auth_pk: None,
             n_extended_channels: 1,
             n_standard_channels: 1,

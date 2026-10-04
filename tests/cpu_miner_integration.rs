@@ -33,7 +33,7 @@ async fn test_mining_client_one_standard_channel() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: sniffer_addr,
+        server_addr: sniffer_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 1,
@@ -113,7 +113,7 @@ async fn test_mining_client_one_extended_channel() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: sniffer_addr,
+        server_addr: sniffer_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 1,
         n_standard_channels: 0,
@@ -197,7 +197,7 @@ async fn test_mining_client_mixed_channels() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: sniffer_addr,
+        server_addr: sniffer_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 1,
         n_standard_channels: 1,
@@ -300,7 +300,7 @@ async fn test_mining_client_two_standard_channels() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: sniffer_addr,
+        server_addr: sniffer_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 2,
@@ -391,7 +391,7 @@ async fn test_mining_client_two_extended_channels() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: sniffer_addr,
+        server_addr: sniffer_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 2,
         n_standard_channels: 0,
@@ -484,7 +484,7 @@ async fn test_mining_client_standard_channels_in_group_mode() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: sniffer_addr,
+        server_addr: sniffer_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 2,
@@ -591,7 +591,7 @@ async fn test_mining_client_single_submit() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: sniffer_addr,
+        server_addr: sniffer_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 1,
@@ -659,7 +659,7 @@ async fn test_mining_client_single_submit_with_a_static_job() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: sniffer_addr,
+        server_addr: sniffer_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 1,
@@ -768,7 +768,7 @@ async fn test_mining_client_nominal_hashrate_multiplier() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: sniffer_addr,
+        server_addr: sniffer_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 2,
@@ -830,7 +830,7 @@ async fn test_mining_client_shutdown_returns_ok() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: sniffer_addr,
+        server_addr: sniffer_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 1,
@@ -884,7 +884,7 @@ async fn test_mining_client_advances_ntime_with_the_clock() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let config = Sv2CpuMinerConfig {
-        server_addr: sniffer_addr,
+        server_addr: sniffer_addr.to_string(),
         auth_pk: None,
         n_extended_channels: 0,
         n_standard_channels: 1,
