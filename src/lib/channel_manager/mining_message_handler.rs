@@ -1163,6 +1163,34 @@ mod tests {
         );
     }
 
+    // a target set on a group channel applies to each of its members and to no other channel
+    // (spec 5.3.21 + group addressing)
+    #[tokio::test]
+    async fn set_target_addressed_to_a_group_updates_its_members() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        // any value distinct from the [0xFF; 32] the channels were opened with
+        let mut raised_target = [0_u8; 32];
+        raised_target[0] = 0xFF;
+        handler
+            .handle_set_target(
+                None,
+                SetTargetOwned {
+                    channel_id: 1,
+                    maximum_target: raised_target.into(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        let expected = Target::from_le_bytes(raised_target);
+        let opened_with = Target::from_le_bytes([0xFF_u8; 32]);
+        assert_eq!(handler.standard_channels[&2].target().unwrap(), expected);
+        assert_eq!(handler.standard_channels[&3].target().unwrap(), expected);
+        assert_eq!(handler.standard_channels[&5].target().unwrap(), opened_with);
+    }
+
     #[tokio::test]
     async fn extended_job_on_a_standard_jobs_connection_is_fatal() {
         let (mut handler, _receiver) = handler(true);
