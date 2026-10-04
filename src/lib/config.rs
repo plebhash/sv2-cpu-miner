@@ -117,6 +117,60 @@ mod tests {
     }
 
     #[test]
+    fn splits_server_addr_into_host_and_port() {
+        for (server_addr, host, port) in [
+            ("127.0.0.1:3333", "127.0.0.1", 3333),
+            ("mining-server.example:3333", "mining-server.example", 3333),
+            ("[::1]:3333", "::1", 3333),
+        ] {
+            let config = Sv2CpuMinerConfig {
+                server_addr: server_addr.to_string(),
+                ..valid_config()
+            };
+            assert_eq!(config.server_host_and_port().unwrap(), (host, port));
+        }
+    }
+
+    #[test]
+    fn rejects_a_server_addr_without_a_usable_port() {
+        for server_addr in [
+            "mining-server.example",
+            "mining-server.example:",
+            "mining-server.example:pool",
+            "mining-server.example:70000",
+        ] {
+            let config = Sv2CpuMinerConfig {
+                server_addr: server_addr.to_string(),
+                ..valid_config()
+            };
+            assert!(
+                matches!(
+                    config.validate(),
+                    Err(Sv2CpuMinerError::InvalidConfig(msg)) if msg.contains("server_addr")
+                ),
+                "{server_addr} was accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_a_host_that_cannot_fit_a_str0255() {
+        for server_addr in [":3333".to_string(), format!("{}:3333", "x".repeat(256))] {
+            let config = Sv2CpuMinerConfig {
+                server_addr: server_addr.clone(),
+                ..valid_config()
+            };
+            assert!(
+                matches!(
+                    config.validate(),
+                    Err(Sv2CpuMinerError::InvalidConfig(msg)) if msg.contains("server_addr host")
+                ),
+                "{server_addr} was accepted"
+            );
+        }
+    }
+
+    #[test]
     fn rejects_user_identity_over_255_bytes() {
         let config = Sv2CpuMinerConfig {
             user_identity: "x".repeat(256),
