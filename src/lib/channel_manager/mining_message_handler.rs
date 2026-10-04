@@ -1362,6 +1362,40 @@ mod tests {
         assert_eq!(handler.standard_channels[&5].active_job_id().unwrap(), None);
     }
 
+    // a refused channel opening or update only concerns that request: the other channels on
+    // the connection keep working, so neither error reply may end the run
+    #[tokio::test]
+    async fn open_and_update_channel_errors_are_not_fatal() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        handler
+            .handle_open_mining_channel_error(
+                None,
+                OpenMiningChannelErrorOwned {
+                    request_id: 9,
+                    error_code: "unknown-user".to_string().try_into().unwrap(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        handler
+            .handle_update_channel_error(
+                None,
+                UpdateChannelErrorOwned {
+                    channel_id: 2,
+                    error_code: "max-target-out-of-range".to_string().try_into().unwrap(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        let mut open_channel_ids: Vec<u32> = handler.standard_channels.keys().copied().collect();
+        open_channel_ids.sort_unstable();
+        assert_eq!(open_channel_ids, vec![2, 3, 5]);
+    }
+
     #[tokio::test]
     async fn extended_job_on_a_standard_jobs_connection_is_fatal() {
         let (mut handler, _receiver) = handler(true);
