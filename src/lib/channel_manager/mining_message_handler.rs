@@ -1258,6 +1258,48 @@ mod tests {
         assert!(handler.group_channels.contains_key(&6));
     }
 
+    // work selection is never declared on the connection, so a SetCustomMiningJob reply is a
+    // protocol violation that ends the run
+    #[tokio::test]
+    async fn set_custom_mining_job_replies_are_fatal() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        assert!(matches!(
+            handler
+                .handle_set_custom_mining_job_success(
+                    None,
+                    SetCustomMiningJobSuccessOwned {
+                        channel_id: 2,
+                        request_id: 0,
+                        job_id: 1,
+                    },
+                    None,
+                )
+                .await,
+            Err(Sv2CpuMinerError::UnexpectedMessage(
+                _,
+                MESSAGE_TYPE_SET_CUSTOM_MINING_JOB_SUCCESS
+            ))
+        ));
+        assert!(matches!(
+            handler
+                .handle_set_custom_mining_job_error(
+                    None,
+                    SetCustomMiningJobErrorOwned {
+                        channel_id: 2,
+                        request_id: 0,
+                        error_code: "test".to_string().try_into().unwrap(),
+                    },
+                    None,
+                )
+                .await,
+            Err(Sv2CpuMinerError::UnexpectedMessage(
+                _,
+                MESSAGE_TYPE_SET_CUSTOM_MINING_JOB_ERROR
+            ))
+        ));
+    }
+
     #[tokio::test]
     async fn extended_job_on_a_standard_jobs_connection_is_fatal() {
         let (mut handler, _receiver) = handler(true);

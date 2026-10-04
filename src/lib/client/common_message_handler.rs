@@ -181,6 +181,45 @@ mod tests {
         );
     }
 
+    // this client opens one connection straight to the mining server and never negotiates
+    // endpoint changes or reconnection, so these server messages end the run
+    #[tokio::test]
+    async fn channel_endpoint_changed_is_an_unexpected_message() {
+        assert!(matches!(
+            miner(1)
+                .handle_channel_endpoint_changed(
+                    None,
+                    ChannelEndpointChangedOwned { channel_id: 1 },
+                    None
+                )
+                .await,
+            Err(Sv2CpuMinerError::UnexpectedMessage(
+                _,
+                MESSAGE_TYPE_CHANNEL_ENDPOINT_CHANGED
+            ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn reconnect_is_an_unexpected_message() {
+        assert!(matches!(
+            miner(1)
+                .handle_reconnect(
+                    None,
+                    ReconnectOwned {
+                        new_host: "127.0.0.1".to_string().try_into().unwrap(),
+                        new_port: 3333,
+                    },
+                    None,
+                )
+                .await,
+            Err(Sv2CpuMinerError::UnexpectedMessage(
+                _,
+                MESSAGE_TYPE_RECONNECT
+            ))
+        ));
+    }
+
     #[tokio::test]
     async fn rejects_flags_the_spec_does_not_define() {
         assert!(matches!(
