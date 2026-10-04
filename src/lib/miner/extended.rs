@@ -373,6 +373,80 @@ async fn mine_job(
 mod tests {
     use super::*;
     use std::panic::{AssertUnwindSafe, catch_unwind};
+    use stratum_apps::stratum_core::binary_sv2::Sv2OptionOwned;
+    use tokio::time::timeout;
+
+    // A coinbase that parses once a 32-byte full extranonce is inserted, split here as a
+    // 28-byte prefix plus 4 rollable bytes. The bytes come from the channels_sv2 client tests.
+    const COINBASE_TX_PREFIX: &[u8] = &[
+        2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 34, 82, 0,
+    ];
+    const COINBASE_TX_SUFFIX: &[u8] = &[
+        255, 255, 255, 255, 2, 0, 242, 5, 42, 1, 0, 0, 0, 22, 0, 20, 235, 225, 183, 220, 194, 147,
+        204, 170, 14, 231, 67, 168, 111, 137, 223, 130, 88, 194, 8, 252, 0, 0, 0, 0, 0, 0, 0, 0,
+        38, 106, 36, 170, 33, 169, 237, 226, 246, 28, 63, 113, 209, 222, 253, 63, 169, 153, 223,
+        163, 105, 83, 117, 92, 105, 6, 137, 121, 153, 98, 180, 139, 235, 216, 54, 151, 78, 140,
+        249, 0, 0, 0, 0,
+    ];
+
+    /// The miner's pre-check uses the channel target, relaxed here after the job became active,
+    /// so it finds "shares" at once; the job keeps its unreachable target, so the channel rejects
+    /// every one of them and none may be submitted.
+    #[tokio::test]
+    async fn shares_the_channel_rejects_are_not_submitted() {
+        let mut unreachable = [0u8; 32];
+        unreachable[0] = 1;
+        let channel = ExtendedChannel::new(
+            1,
+            "user".to_string(),
+            ExtranoncePrefix::from_wire(vec![0; 28]).unwrap(),
+            Target::from_le_bytes(unreachable),
+            1.0,
+            true,
+            4,
+            None,
+        )
+        .unwrap();
+        let (upstream_sender, receiver) = async_channel::unbounded();
+        let mut miner = ExtendedChannelMiner::new(
+            channel,
+            100,
+            false,
+            upstream_sender,
+            CancellationToken::new(),
+        );
+        miner
+            .on_new_extended_mining_job(NewExtendedMiningJobOwned {
+                channel_id: 1,
+                job_id: 1,
+                min_ntime: Sv2OptionOwned::new(None),
+                version: 536870912,
+                version_rolling_allowed: true,
+                merkle_path: vec![].try_into().unwrap(),
+                coinbase_tx_prefix: COINBASE_TX_PREFIX.to_vec().try_into().unwrap(),
+                coinbase_tx_suffix: COINBASE_TX_SUFFIX.to_vec().try_into().unwrap(),
+            })
+            .unwrap();
+        miner
+            .on_set_new_prev_hash(SetNewPrevHashOwned {
+                channel_id: 1,
+                job_id: 1,
+                prev_hash: [0u8; 32].into(),
+                nbits: 453040064,
+                min_ntime: 1745596970,
+            })
+            .unwrap();
+        miner.set_target(Target::from_le_bytes([0xff; 32])).unwrap();
+
+        assert!(
+            timeout(Duration::from_millis(300), receiver.recv())
+                .await
+                .is_err(),
+            "a share the channel rejected was submitted"
+        );
+        miner.miner_cancellation_token.cancel();
+    }
 
     #[test]
     fn poisoned_lock_is_an_error_not_a_panic() {
