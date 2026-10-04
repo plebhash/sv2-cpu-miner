@@ -1396,6 +1396,117 @@ mod tests {
         assert_eq!(open_channel_ids, vec![2, 3, 5]);
     }
 
+    // a channel-scoped message naming a channel that is not open on this connection is a
+    // server-side mistake that concerns no open channel, so it is logged and dropped rather
+    // than ending the run or disturbing the channels that are open
+    #[tokio::test]
+    async fn messages_addressed_to_an_unknown_channel_are_ignored() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        handler
+            .handle_close_channel(
+                None,
+                CloseChannelOwned {
+                    channel_id: 9,
+                    reason_code: "test".to_string().try_into().unwrap(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        handler
+            .handle_set_extranonce_prefix(
+                None,
+                SetExtranoncePrefixOwned {
+                    channel_id: 9,
+                    extranonce_prefix: vec![1_u8; 32].try_into().unwrap(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        handler
+            .handle_submit_shares_success(
+                None,
+                SubmitSharesSuccessOwned {
+                    channel_id: 9,
+                    last_sequence_number: 1,
+                    new_submits_accepted_count: 1,
+                    new_shares_sum: 1,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        handler
+            .handle_submit_shares_error(
+                None,
+                SubmitSharesErrorOwned {
+                    channel_id: 9,
+                    sequence_number: 1,
+                    error_code: "difficulty-too-low".to_string().try_into().unwrap(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        handler
+            .handle_new_mining_job(
+                None,
+                NewMiningJobOwned {
+                    channel_id: 9,
+                    job_id: 11,
+                    min_ntime: Sv2OptionOwned::new(None),
+                    version: 536870912,
+                    merkle_root: [0_u8; 32].into(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        handler
+            .handle_set_new_prev_hash(
+                None,
+                SetNewPrevHashOwned {
+                    channel_id: 9,
+                    job_id: 11,
+                    prev_hash: [0_u8; 32].into(),
+                    min_ntime: 1745596970,
+                    nbits: 453040064,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        handler
+            .handle_set_target(
+                None,
+                SetTargetOwned {
+                    channel_id: 9,
+                    maximum_target: [0_u8; 32].into(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        // the open channels kept every piece of state the messages above could have touched
+        let mut open_channel_ids: Vec<u32> = handler.standard_channels.keys().copied().collect();
+        open_channel_ids.sort_unstable();
+        assert_eq!(open_channel_ids, vec![2, 3, 5]);
+        for channel_id in [2, 3, 5] {
+            let channel = &handler.standard_channels[&channel_id];
+            assert_eq!(channel.extranonce_prefix().unwrap(), vec![0_u8; 32]);
+            assert_eq!(channel.share_accounting_totals().unwrap(), (0, 0));
+            assert!(channel.future_job_ids().unwrap().is_empty());
+            assert_eq!(channel.active_job_id().unwrap(), None);
+            assert_eq!(
+                channel.target().unwrap(),
+                Target::from_le_bytes([0xFF_u8; 32])
+            );
+        }
+    }
+
     #[tokio::test]
     async fn extended_job_on_a_standard_jobs_connection_is_fatal() {
         let (mut handler, _receiver) = handler(true);
