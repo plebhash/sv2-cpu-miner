@@ -1300,6 +1300,68 @@ mod tests {
         ));
     }
 
+    // a NewMiningJob addresses one standard channel (spec 5.3.15), never a group
+    #[tokio::test]
+    async fn new_mining_job_reaches_only_its_channel() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+
+        handler
+            .handle_new_mining_job(
+                None,
+                NewMiningJobOwned {
+                    channel_id: 2,
+                    job_id: 11,
+                    min_ntime: Sv2OptionOwned::new(None),
+                    version: 536870912,
+                    merkle_root: [0_u8; 32].into(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(future_job_ids(&handler, 2), vec![11]);
+        assert!(future_job_ids(&handler, 3).is_empty());
+        assert!(future_job_ids(&handler, 5).is_empty());
+    }
+
+    // a SetNewPrevHash addressed to a group activates the referenced future job on every
+    // member of that group and on no other channel (spec 5.3.17 + group addressing)
+    #[tokio::test]
+    async fn set_new_prev_hash_addressed_to_a_group_activates_its_members_future_job() {
+        let (mut handler, _receiver) = handler_with_two_groups().await;
+        handler
+            .handle_new_extended_mining_job(None, group_job(1, 10), None)
+            .await
+            .unwrap();
+
+        handler
+            .handle_set_new_prev_hash(
+                None,
+                SetNewPrevHashOwned {
+                    channel_id: 1,
+                    job_id: 10,
+                    prev_hash: [0_u8; 32].into(),
+                    min_ntime: 1745596970,
+                    nbits: 453040064,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        for channel_id in [2, 3] {
+            assert_eq!(
+                handler.standard_channels[&channel_id]
+                    .active_job_id()
+                    .unwrap(),
+                Some(10)
+            );
+            assert!(future_job_ids(&handler, channel_id).is_empty());
+        }
+        assert_eq!(handler.standard_channels[&5].active_job_id().unwrap(), None);
+    }
+
     #[tokio::test]
     async fn extended_job_on_a_standard_jobs_connection_is_fatal() {
         let (mut handler, _receiver) = handler(true);

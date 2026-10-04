@@ -77,6 +77,13 @@ impl StandardChannelMiner {
     }
 
     #[cfg(test)]
+    pub fn active_job_id(&self) -> Result<Option<u32>, Sv2CpuMinerError> {
+        Ok(self
+            .standard_channel
+            .read(|channel| channel.get_active_job().map(|job| job.job_message.job_id))?)
+    }
+
+    #[cfg(test)]
     pub fn extranonce_prefix(&self) -> Result<Vec<u8>, Sv2CpuMinerError> {
         Ok(self
             .standard_channel
