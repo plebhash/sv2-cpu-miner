@@ -9,7 +9,10 @@ use integration_tests_sv2::{
     utils::get_available_address,
     *,
 };
-use std::{collections::BTreeSet, time::Duration};
+use std::{
+    collections::BTreeSet,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use stratum_apps::stratum_core::{
     binary_sv2::Sv2OptionOwned,
     common_messages_sv2::{Protocol, *},
@@ -863,12 +866,13 @@ async fn test_mining_client_shutdown_returns_ok() {
     assert!(result.is_ok(), "start() returned {result:?}");
 }
 
-// A block header timestamp claims when the header was built, so a miner may only advance it as
-// real seconds pass: the Sv2 spec bounds a share's ntime at the job's min_ntime plus the seconds
-// elapsed since the message that activated it. Mining one static job for a few seconds must
-// therefore produce timestamps that move, but never ahead of the clock.
+// A block header timestamp claims when the header was built. A job's min_ntime is only a lower
+// bound on it, and it can be much older than the job: every job on one chain tip may carry the
+// min_ntime of the SetNewPrevHash that announced the tip. Mining a job whose min_ntime is an hour
+// old must therefore produce timestamps that follow the clock, and keep following it as seconds
+// pass.
 #[tokio::test]
-async fn test_mining_client_advances_ntime_with_the_clock() {
+async fn test_mining_client_ntime_follows_the_wall_clock() {
     start_tracing();
 
     let mock_upstream_addr = get_available_address();
@@ -940,10 +944,13 @@ async fn test_mining_client_advances_ntime_with_the_clock() {
         .await
         .unwrap();
 
-    // the job is activated by this message, so its min_ntime is what the miner rolls from and
-    // this instant bounds how far the miner's own clock can have advanced
-    let job_min_ntime = 1745596970_u32;
-    let activated_at = Instant::now();
+    // the miner shares this process's clock, so no share may be timestamped before this
+    // instant or after the one taken once the shares are collected
+    let unix_time_before_activation = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as u32;
+    let job_min_ntime = unix_time_before_activation - 3600;
     mock_upstream_sender
         .send(AnyMessageOwned::Mining(MiningOwned::SetNewPrevHash(
             SetNewPrevHashOwned {
@@ -968,21 +975,28 @@ async fn test_mining_client_advances_ntime_with_the_clock() {
             None => tokio::time::sleep(Duration::from_millis(50)).await,
         }
     }
-    let elapsed_seconds = activated_at.elapsed().as_secs() as u32;
+    let unix_time_after_collection = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as u32;
 
     assert!(!ntimes.is_empty(), "no share was submitted");
     assert!(
-        ntimes.iter().all(|&ntime| ntime >= job_min_ntime),
-        "a share predates the job it references: {ntimes:?}"
+        ntimes
+            .iter()
+            .all(|&ntime| ntime >= unix_time_before_activation),
+        "a share is timestamped before {unix_time_before_activation}, when its job was activated: {ntimes:?}"
     );
     assert!(
         ntimes
             .iter()
-            .all(|&ntime| ntime <= job_min_ntime + elapsed_seconds),
-        "ntime ran ahead of the clock after {elapsed_seconds}s: {ntimes:?}"
+            .all(|&ntime| ntime <= unix_time_after_collection),
+        "ntime ran ahead of the clock, which read {unix_time_after_collection}: {ntimes:?}"
     );
     assert!(
-        ntimes.iter().any(|&ntime| ntime > job_min_ntime),
+        ntimes
+            .iter()
+            .any(|&ntime| ntime > unix_time_before_activation),
         "ntime never advanced although seconds passed: {ntimes:?}"
     );
 }

@@ -8,6 +8,7 @@ use stratum_apps::stratum_core::bitcoin::{
     blockdata::block::{Header, Version},
     hashes::sha256d::Hash,
 };
+use stratum_apps::stratum_core::channels_sv2::MAX_FUTURE_BLOCK_TIME;
 use stratum_apps::stratum_core::channels_sv2::client::extended::ExtendedChannel;
 use stratum_apps::stratum_core::channels_sv2::client::share_accounting::ShareValidationResult;
 use stratum_apps::stratum_core::channels_sv2::extranonce_manager::ExtranoncePrefix;
@@ -22,6 +23,7 @@ use stratum_apps::utils::types::{Message, OutboundFrame};
 
 use super::CPU_THROTTLE_WINDOW_MS;
 
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
@@ -239,6 +241,19 @@ async fn mine_job(
         .into_inner()
         .expect("only active jobs allowed");
     let job_activated_at = std::time::Instant::now();
+    // The wall clock is read once and advanced by the monotonic clock from then on, so the
+    // hashing loop never queries the system time. A job's min_ntime is where hashing may
+    // start, not when the job was built: every job on one chain tip can carry the same one,
+    // so on a clock that is not behind it, the header timestamp comes from the clock.
+    let unix_time_at_job_activation = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since_epoch| {
+            u32::try_from(since_epoch.as_secs()).unwrap_or(u32::MAX)
+        });
+    let ntime_at_job_activation = job_min_ntime.max(unix_time_at_job_activation);
+    // The channel's share validation has no clock and rejects any ntime further than this
+    // from the job's min_ntime, so a job older than that keeps hashing at the bound.
+    let job_max_ntime = job_min_ntime.saturating_add(MAX_FUTURE_BLOCK_TIME);
 
     // Time-based throttling: work for cpu_usage_percent ms, then sleep for (100-cpu_usage_percent)ms in CPU_THROTTLE_WINDOW_MS windows
     let work_duration_ms = cpu_usage_percent;
@@ -278,11 +293,13 @@ async fn mine_job(
                     }
                 }
 
-                // A block header timestamp claims when the header was built, so it may only
-                // advance as real seconds pass.
+                // A block header timestamp claims when the header was built, so it follows
+                // the clock and only advances as real seconds pass.
                 let elapsed_seconds =
                     u32::try_from(job_activated_at.elapsed().as_secs()).unwrap_or(u32::MAX);
-                let ntime = job_min_ntime.saturating_add(elapsed_seconds);
+                let ntime = ntime_at_job_activation
+                    .saturating_add(elapsed_seconds)
+                    .min(job_max_ntime);
 
                 let header = Header {
                     version: Version::from_consensus(version as i32),
